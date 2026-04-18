@@ -1,0 +1,58 @@
+# Build outputs
+/build/
+/dist/
+/native/build/
+/native/build-*/
+
+# CMake / MSVC / Qt generated artifacts
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+*.vcxproj.user
+*.VC.db
+*.sln.docstates
+*.obj
+*.pdb
+*.ilk
+*.idb
+*.ipdb
+*.iobj
+*.tlog
+*.lastbuildstate
+*.recipe
+*.log
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Editor / local state
+.idea/
+.vscode/
+.vs/
+.omx/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Local temporary files
+aqtinstall.log
+ui_test_output.txt
+$out
+*_out.txt
+*_result.txt
+*_test_output.txt
+
+# Secrets / local provider credentials
+.env
+.env.*
+*.local
+*.secret
+secrets.json
