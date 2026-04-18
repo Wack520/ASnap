@@ -6,11 +6,17 @@
 
 namespace ais::capture {
 
+struct ScreenMapping {
+    QRect overlayRect;
+    QRect virtualRect;
+};
+
 struct DesktopSnapshot {
     QPixmap displayImage;
     QPixmap captureImage;
+    QRect overlayGeometry;
     QRect virtualGeometry;
-    QList<QRect> screenGeometries;
+    QList<ScreenMapping> screenMappings;
 };
 
 }  // namespace ais::capture

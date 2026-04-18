@@ -92,7 +92,7 @@ CaptureOverlay::CaptureOverlay(DesktopSnapshot snapshot, QWidget* parent)
     setCursor(Qt::CrossCursor);
     setFocusPolicy(Qt::StrongFocus);
     setMouseTracking(true);
-    setGeometry(snapshot_.virtualGeometry);
+    setGeometry(snapshot_.overlayGeometry.isValid() ? snapshot_.overlayGeometry : snapshot_.virtualGeometry);
 }
 
 void CaptureOverlay::paintEvent(QPaintEvent*) {
@@ -202,18 +202,25 @@ QPoint CaptureOverlay::clampToBounds(const QPoint& point) const {
 }
 
 QRect CaptureOverlay::localScreenRectAt(const QPoint& point) const {
-    if (snapshot_.screenGeometries.isEmpty()) {
+    if (snapshot_.screenMappings.isEmpty()) {
         return {};
     }
 
-    const QPoint virtualPoint = point + snapshot_.virtualGeometry.topLeft();
-    for (const QRect& screenGeometry : snapshot_.screenGeometries) {
-        if (!screenGeometry.contains(virtualPoint)) {
+    const QPoint overlayPoint = point +
+                                (snapshot_.overlayGeometry.isValid()
+                                     ? snapshot_.overlayGeometry.topLeft()
+                                     : snapshot_.virtualGeometry.topLeft());
+    const QRect localBounds = rect().adjusted(0, 0, -1, -1);
+    for (const ScreenMapping& mapping : snapshot_.screenMappings) {
+        if (!mapping.overlayRect.contains(overlayPoint)) {
             continue;
         }
 
-        const QRect localRect = screenGeometry.translated(-snapshot_.virtualGeometry.topLeft());
-        return localRect.intersected(rect().adjusted(0, 0, -1, -1));
+        const QRect localRect =
+            mapping.overlayRect.translated(-(snapshot_.overlayGeometry.isValid()
+                                                ? snapshot_.overlayGeometry.topLeft()
+                                                : snapshot_.virtualGeometry.topLeft()));
+        return localRect.intersected(localBounds);
     }
 
     return {};
@@ -236,9 +243,7 @@ void CaptureOverlay::confirmSelection(const QRect& localSelection) {
     emit captureConfirmed(CaptureSelection{
         .image = DesktopCaptureService::copyLogicalSelection(captureSource, localSelection),
         .localRect = localSelection,
-        .virtualRect = DesktopCaptureService::translateToVirtual(
-            localSelection,
-            snapshot_.virtualGeometry.topLeft()),
+        .virtualRect = DesktopCaptureService::translateToVirtual(snapshot_, localSelection),
     });
     close();
 }

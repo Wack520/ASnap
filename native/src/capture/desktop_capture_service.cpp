@@ -244,8 +244,9 @@ void applyHdrToneMapping(QImage* linearImage, const LinearImageStats& stats) {
 
         frames.append(CapturedScreenFrame{
             .image = DesktopCaptureService::normalizeForSdr(shot.toImage()),
-            .geometry = screen->geometry(),
-            .devicePixelRatio = qMax(1.0, screen->devicePixelRatio()),
+            .overlayGeometry = screen->geometry(),
+            .virtualGeometry = screen->geometry(),
+            .devicePixelRatio = 1.0,
         });
     }
 
@@ -270,10 +271,10 @@ void applyHdrToneMapping(QImage* linearImage, const LinearImageStats& stats) {
         return {};
     }
 
-    QHash<QString, QImage> nativeImagesByName;
+    QHash<QString, platform::windows::NativeScreenFrame> nativeScreensByName;
     for (const auto& nativeScreen : nativeScreens) {
         if (!nativeScreen.image.isNull()) {
-            nativeImagesByName.insert(normalizedScreenName(nativeScreen.deviceName), nativeScreen.image);
+            nativeScreensByName.insert(normalizedScreenName(nativeScreen.deviceName), nativeScreen);
         }
     }
 
@@ -283,14 +284,15 @@ void applyHdrToneMapping(QImage* linearImage, const LinearImageStats& stats) {
             continue;
         }
 
-        const QImage image = nativeImagesByName.value(normalizedScreenName(screen->name()));
-        if (image.isNull()) {
+        const auto nativeScreen = nativeScreensByName.value(normalizedScreenName(screen->name()));
+        if (nativeScreen.image.isNull()) {
             continue;
         }
 
         frames.append(CapturedScreenFrame{
-            .image = DesktopCaptureService::normalizeForSdr(image),
-            .geometry = screen->geometry(),
+            .image = DesktopCaptureService::normalizeForSdr(nativeScreen.image),
+            .overlayGeometry = nativeScreen.monitorRect,
+            .virtualGeometry = screen->geometry(),
             .devicePixelRatio = qMax(1.0, screen->devicePixelRatio()),
         });
     }
@@ -311,30 +313,35 @@ DesktopSnapshot DesktopCaptureService::captureVirtualDesktop() const {
 }
 
 DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenFrame>& frames) {
-    QRect geometry;
+    QRect overlayGeometry;
+    QRect virtualGeometry;
     bool first = true;
-    qreal devicePixelRatio = 1.0;
     QList<CapturedScreenFrame> validFrames;
-    QList<QRect> screenGeometries;
+    QList<ScreenMapping> screenMappings;
 
     for (const CapturedScreenFrame& frame : frames) {
-        if (frame.image.isNull() || !frame.geometry.isValid() || frame.geometry.isEmpty()) {
+        if (frame.image.isNull() || !frame.overlayGeometry.isValid() || frame.overlayGeometry.isEmpty()) {
             continue;
         }
 
         validFrames.append(frame);
-        screenGeometries.append(frame.geometry);
-        geometry = first ? frame.geometry : geometry.united(frame.geometry);
+        screenMappings.append(ScreenMapping{
+            .overlayRect = frame.overlayGeometry,
+            .virtualRect = frame.virtualGeometry.isValid() ? frame.virtualGeometry : frame.overlayGeometry,
+        });
+        overlayGeometry = first ? frame.overlayGeometry : overlayGeometry.united(frame.overlayGeometry);
+        const QRect frameVirtualGeometry =
+            frame.virtualGeometry.isValid() ? frame.virtualGeometry : frame.overlayGeometry;
+        virtualGeometry = first ? frameVirtualGeometry : virtualGeometry.united(frameVirtualGeometry);
         first = false;
-        devicePixelRatio = qMax(devicePixelRatio, qMax(1.0, frame.devicePixelRatio));
     }
 
-    if (validFrames.isEmpty() || geometry.isNull() || geometry.isEmpty()) {
+    if (validFrames.isEmpty() || overlayGeometry.isNull() || overlayGeometry.isEmpty()) {
         return DesktopSnapshot{};
     }
 
-    QImage canvas(QSize(qMax(1, qRound(geometry.width() * devicePixelRatio)),
-                        qMax(1, qRound(geometry.height() * devicePixelRatio))),
+    QImage canvas(QSize(qMax(1, overlayGeometry.width()),
+                        qMax(1, overlayGeometry.height())),
                   QImage::Format_ARGB32_Premultiplied);
     canvas.setColorSpace(QColorSpace(QColorSpace::SRgb));
     canvas.fill(Qt::black);
@@ -342,22 +349,19 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
     QPainter painter(&canvas);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     for (const CapturedScreenFrame& frame : validFrames) {
-        const QPoint logicalTopLeft = frame.geometry.topLeft() - geometry.topLeft();
-        const QRect targetRect(qRound(logicalTopLeft.x() * devicePixelRatio),
-                               qRound(logicalTopLeft.y() * devicePixelRatio),
-                               qRound(frame.geometry.width() * devicePixelRatio),
-                               qRound(frame.geometry.height() * devicePixelRatio));
+        const QPoint topLeft = frame.overlayGeometry.topLeft() - overlayGeometry.topLeft();
+        const QRect targetRect(topLeft, frame.overlayGeometry.size());
         painter.drawImage(targetRect, normalizeForSdr(frame.image));
     }
     painter.end();
 
     QPixmap stitched = QPixmap::fromImage(canvas);
-    stitched.setDevicePixelRatio(devicePixelRatio);
     return DesktopSnapshot{
         .displayImage = stitched,
         .captureImage = stitched,
-        .virtualGeometry = geometry,
-        .screenGeometries = screenGeometries,
+        .overlayGeometry = overlayGeometry,
+        .virtualGeometry = virtualGeometry,
+        .screenMappings = screenMappings,
     };
 }
 
@@ -400,6 +404,56 @@ QImage DesktopCaptureService::normalizeForSdr(const QImage& image) {
 QRect DesktopCaptureService::translateToVirtual(const QRect& localRect,
                                                 const QPoint& virtualOrigin) {
     return localRect.translated(virtualOrigin);
+}
+
+QRect DesktopCaptureService::translateToVirtual(const DesktopSnapshot& snapshot,
+                                                const QRect& localRect) {
+    if (!localRect.isValid() || localRect.isEmpty()) {
+        return {};
+    }
+
+    if (snapshot.screenMappings.isEmpty() || !snapshot.overlayGeometry.isValid()) {
+        return translateToVirtual(localRect, snapshot.virtualGeometry.topLeft());
+    }
+
+    const QRect globalOverlayRect = localRect.translated(snapshot.overlayGeometry.topLeft());
+    QRect mappedVirtualRect;
+    bool first = true;
+
+    for (const ScreenMapping& mapping : snapshot.screenMappings) {
+        const QRect overlayRect = mapping.overlayRect;
+        const QRect virtualRect = mapping.virtualRect.isValid() ? mapping.virtualRect : mapping.overlayRect;
+        const QRect intersection = globalOverlayRect.intersected(overlayRect);
+        if (!intersection.isValid() || intersection.isEmpty()) {
+            continue;
+        }
+
+        const double scaleX = overlayRect.width() > 0
+                                  ? static_cast<double>(virtualRect.width()) /
+                                        static_cast<double>(overlayRect.width())
+                                  : 1.0;
+        const double scaleY = overlayRect.height() > 0
+                                  ? static_cast<double>(virtualRect.height()) /
+                                        static_cast<double>(overlayRect.height())
+                                  : 1.0;
+
+        const int relativeLeft = intersection.left() - overlayRect.left();
+        const int relativeTop = intersection.top() - overlayRect.top();
+        const int mappedLeft = virtualRect.left() + qRound(relativeLeft * scaleX);
+        const int mappedTop = virtualRect.top() + qRound(relativeTop * scaleY);
+        const int mappedWidth = qMax(1, qRound(intersection.width() * scaleX));
+        const int mappedHeight = qMax(1, qRound(intersection.height() * scaleY));
+        const QRect mappedRect(mappedLeft, mappedTop, mappedWidth, mappedHeight);
+
+        mappedVirtualRect = first ? mappedRect : mappedVirtualRect.united(mappedRect);
+        first = false;
+    }
+
+    if (!first) {
+        return mappedVirtualRect;
+    }
+
+    return translateToVirtual(localRect, snapshot.virtualGeometry.topLeft());
 }
 
 QPixmap DesktopCaptureService::copyLogicalSelection(const QPixmap& source,

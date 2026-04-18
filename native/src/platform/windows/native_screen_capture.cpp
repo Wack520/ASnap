@@ -150,6 +150,10 @@ struct CaptureEnumContext {
     context->frames->append(NativeScreenFrame{
         .deviceName = QString::fromWCharArray(monitorInfo.szDevice),
         .image = image,
+        .monitorRect = QRect(monitorInfo.rcMonitor.left,
+                             monitorInfo.rcMonitor.top,
+                             monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
+                             monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top),
     });
     return TRUE;
 }

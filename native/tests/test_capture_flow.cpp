@@ -29,7 +29,12 @@ namespace {
     return DesktopSnapshot{
         .displayImage = displayImage,
         .captureImage = displayImage,
+        .overlayGeometry = QRect(-120, 80, displayImage.width(), displayImage.height()),
         .virtualGeometry = QRect(-120, 80, displayImage.width(), displayImage.height()),
+        .screenMappings = {ais::capture::ScreenMapping{
+            .overlayRect = QRect(-120, 80, displayImage.width(), displayImage.height()),
+            .virtualRect = QRect(-120, 80, displayImage.width(), displayImage.height()),
+        }},
     };
 }
 
@@ -43,11 +48,12 @@ private slots:
     void parsesAltQHotkeyChord();
     void translatesLocalSelectionToVirtualDesktopCoordinates();
     void logicalSelectionCopiesPhysicalPixelsForHighDpiSnapshots();
+    void translatesSelectionFromPhysicalOverlayToVirtualDesktopCoordinates();
     void hdrLikeImageIsNormalizedToSdrColorSpace();
     void hdrLikeImageWithoutMetadataAssumesLinearSdrConversion();
     void chromeLikeHdrWhitesAreCompressedBeforeSdrClipping();
     void clippedSdrChromeLikeHighlightsAreCompressed();
-    void composeFramesScalesMultiMonitorOffsetsUsingMaxDevicePixelRatio();
+    void composeFramesUseOverlayGeometryWithoutMixedDpiGap();
     void composeFramesSkipsEmptyRemoteFrames();
     void overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage();
     void overlayInitialRenderKeepsFrozenImageUndimmed();
@@ -92,6 +98,28 @@ void CaptureFlowTests::logicalSelectionCopiesPhysicalPixelsForHighDpiSnapshots()
     QCOMPARE(cropped.deviceIndependentSize().toSize(), logicalRect.size());
     QCOMPARE(cropped.width(), logicalRect.width() * 2);
     QCOMPARE(cropped.height(), logicalRect.height() * 2);
+}
+
+void CaptureFlowTests::translatesSelectionFromPhysicalOverlayToVirtualDesktopCoordinates() {
+    const DesktopSnapshot snapshot{
+        .overlayGeometry = QRect(0, 0, 320, 100),
+        .virtualGeometry = QRect(0, 0, 320, 100),
+        .screenMappings = {
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(0, 0, 200, 100),
+                .virtualRect = QRect(0, 0, 133, 67),
+            },
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(200, 0, 120, 80),
+                .virtualRect = QRect(200, 0, 120, 80),
+            },
+        },
+    };
+
+    QCOMPARE(DesktopCaptureService::translateToVirtual(snapshot, QRect(20, 10, 100, 40)),
+             QRect(13, 7, 67, 27));
+    QCOMPARE(DesktopCaptureService::translateToVirtual(snapshot, QRect(220, 10, 40, 30)),
+             QRect(220, 10, 40, 30));
 }
 
 void CaptureFlowTests::hdrLikeImageIsNormalizedToSdrColorSpace() {
@@ -181,32 +209,35 @@ void CaptureFlowTests::clippedSdrChromeLikeHighlightsAreCompressed() {
                             .arg(dark.red())));
 }
 
-void CaptureFlowTests::composeFramesScalesMultiMonitorOffsetsUsingMaxDevicePixelRatio() {
-    QImage left(QSize(200, 120), QImage::Format_ARGB32_Premultiplied);
+void CaptureFlowTests::composeFramesUseOverlayGeometryWithoutMixedDpiGap() {
+    QImage left(QSize(200, 100), QImage::Format_ARGB32_Premultiplied);
     left.fill(Qt::red);
 
-    QImage right(QSize(200, 120), QImage::Format_ARGB32_Premultiplied);
+    QImage right(QSize(120, 80), QImage::Format_ARGB32_Premultiplied);
     right.fill(Qt::green);
 
     const DesktopSnapshot snapshot = DesktopCaptureService::composeFrames({
         {
             .image = left,
-            .geometry = QRect(0, 0, 100, 60),
-            .devicePixelRatio = 2.0,
+            .overlayGeometry = QRect(0, 0, 200, 100),
+            .virtualGeometry = QRect(0, 0, 133, 67),
+            .devicePixelRatio = 1.5,
         },
         {
             .image = right,
-            .geometry = QRect(100, 0, 100, 60),
-            .devicePixelRatio = 2.0,
+            .overlayGeometry = QRect(200, 0, 120, 80),
+            .virtualGeometry = QRect(200, 0, 120, 80),
+            .devicePixelRatio = 1.0,
         },
     });
 
-    QCOMPARE(snapshot.virtualGeometry, QRect(0, 0, 200, 60));
-    QCOMPARE(snapshot.displayImage.devicePixelRatio(), 2.0);
+    QCOMPARE(snapshot.overlayGeometry, QRect(0, 0, 320, 100));
+    QCOMPARE(snapshot.virtualGeometry, QRect(0, 0, 320, 80));
+    QCOMPARE(snapshot.displayImage.deviceIndependentSize().toSize(), QSize(320, 100));
 
     const QImage rendered = snapshot.displayImage.toImage();
-    QVERIFY(rendered.pixelColor(40, 40).red() > 200);
-    QVERIFY(rendered.pixelColor(320, 40).green() > 150);
+    QVERIFY(rendered.pixelColor(150, 40).red() > 200);
+    QVERIFY(rendered.pixelColor(260, 40).green() > 150);
 }
 
 void CaptureFlowTests::composeFramesSkipsEmptyRemoteFrames() {
@@ -216,17 +247,20 @@ void CaptureFlowTests::composeFramesSkipsEmptyRemoteFrames() {
     const DesktopSnapshot snapshot = DesktopCaptureService::composeFrames({
         {
             .image = primary,
-            .geometry = QRect(0, 0, 160, 100),
+            .overlayGeometry = QRect(0, 0, 160, 100),
+            .virtualGeometry = QRect(0, 0, 160, 100),
             .devicePixelRatio = 1.0,
         },
         {
             .image = QImage(),
-            .geometry = QRect(160, 0, 160, 100),
+            .overlayGeometry = QRect(160, 0, 160, 100),
+            .virtualGeometry = QRect(160, 0, 160, 100),
             .devicePixelRatio = 2.0,
         },
     });
 
     QCOMPARE(snapshot.virtualGeometry, QRect(0, 0, 160, 100));
+    QCOMPARE(snapshot.overlayGeometry, QRect(0, 0, 160, 100));
     QCOMPARE(snapshot.displayImage.deviceIndependentSize().toSize(), QSize(160, 100));
 }
 
@@ -242,7 +276,12 @@ void CaptureFlowTests::overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptur
     CaptureOverlay overlay(DesktopSnapshot{
         .displayImage = displayImage,
         .captureImage = captureImage,
+        .overlayGeometry = QRect(0, 0, displayImage.width(), displayImage.height()),
         .virtualGeometry = QRect(0, 0, displayImage.width(), displayImage.height()),
+        .screenMappings = {ais::capture::ScreenMapping{
+            .overlayRect = QRect(0, 0, displayImage.width(), displayImage.height()),
+            .virtualRect = QRect(0, 0, displayImage.width(), displayImage.height()),
+        }},
     });
 
     overlay.show();
@@ -354,8 +393,18 @@ void CaptureFlowTests::doubleClickWithoutSelectionCapturesClickedScreenOnMultiMo
     const DesktopSnapshot snapshot{
         .displayImage = displayImage,
         .captureImage = displayImage,
+        .overlayGeometry = QRect(0, 0, 448, 144),
         .virtualGeometry = QRect(0, 0, 448, 144),
-        .screenGeometries = {QRect(0, 0, 54, 96), QRect(192, 0, 256, 144)},
+        .screenMappings = {
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(0, 0, 54, 96),
+                .virtualRect = QRect(0, 0, 54, 96),
+            },
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(192, 0, 256, 144),
+                .virtualRect = QRect(192, 0, 256, 144),
+            },
+        },
     };
 
     CaptureOverlay overlay(snapshot);

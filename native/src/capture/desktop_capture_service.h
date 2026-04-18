@@ -11,7 +11,8 @@ namespace ais::capture {
 
 struct CapturedScreenFrame {
     QImage image;
-    QRect geometry;
+    QRect overlayGeometry;
+    QRect virtualGeometry;
     qreal devicePixelRatio = 1.0;
 };
 
@@ -22,6 +23,8 @@ public:
     [[nodiscard]] static QImage normalizeForSdr(const QImage& image);
     [[nodiscard]] static QRect translateToVirtual(const QRect& localRect,
                                                   const QPoint& virtualOrigin);
+    [[nodiscard]] static QRect translateToVirtual(const DesktopSnapshot& snapshot,
+                                                  const QRect& localRect);
     [[nodiscard]] static QPixmap copyLogicalSelection(const QPixmap& source,
                                                       const QRect& logicalRect);
 };
