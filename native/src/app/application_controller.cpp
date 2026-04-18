@@ -430,10 +430,6 @@ void ApplicationController::onFollowUpRequested(const QString& text) {
     }
 }
 
-void ApplicationController::onRecaptureRequested() {
-    startCapture();
-}
-
 void ApplicationController::onSettingsSaveRequested() {
     applySettingsFromDialog();
 }
@@ -523,8 +519,6 @@ void ApplicationController::ensureChatPanel() {
     chatPanel_ = new ui::FloatingChatPanel();
     connect(chatPanel_, &ui::FloatingChatPanel::sendRequested,
             this, &ApplicationController::onFollowUpRequested);
-    connect(chatPanel_, &ui::FloatingChatPanel::recaptureRequested,
-            this, &ApplicationController::onRecaptureRequested);
     connect(chatPanel_, &ui::FloatingChatPanel::panelDismissed,
             this, &ApplicationController::onChatPanelDismissed);
     connect(chatPanel_, &QObject::destroyed, this, [this]() {
@@ -627,7 +621,7 @@ void ApplicationController::applyConfigDefaults() {
         config_.settingsDialogSize = {};
     }
     if (config_.firstPrompt.trimmed().isEmpty()) {
-        config_.firstPrompt = config::AppConfig{}.firstPrompt;
+        config_.firstPrompt = config::defaultFirstPromptText();
     }
 }
 
@@ -724,7 +718,6 @@ void ApplicationController::beginSessionFromSelection(const capture::CaptureSele
     }
 
     chatPanel_->bindSession(currentSession_);
-    chatPanel_->setPreviewPixmap(selection.image);
     chatPanel_->show();
 
     if (QScreen* screen = screenForRect(selection.virtualRect); screen != nullptr) {
@@ -1097,7 +1090,7 @@ QString ApplicationController::defaultFirstPrompt() const {
         return prompt;
     }
 
-    return config::AppConfig{}.firstPrompt;
+    return config::defaultFirstPromptText();
 }
 
 int ApplicationController::emptyRetryDelayMs(const bool hasImageContext,

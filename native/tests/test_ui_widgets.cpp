@@ -60,7 +60,6 @@ private slots:
     void settingsDialogRestoresSavedSize();
     void settingsDialogSaveKeepsDialogOpenAndEmitsSignal();
     void bindSessionRendersCurrentHistory();
-    void previewAreaIsRemovedFromDefaultLayout();
     void defaultPanelWindowSizeIsCompact();
     void floatingPanelCanRestoreSavedSize();
     void floatingPanelUsesFramelessTransparentWindow();
@@ -443,13 +442,6 @@ void UiWidgetTests::bindSessionRendersCurrentHistory() {
     const QString history = panel.historyView()->toPlainText();
     QVERIFY(history.contains(QStringLiteral("What is this?")));
     QVERIFY(history.contains(QStringLiteral("A widget test.")));
-}
-
-void UiWidgetTests::previewAreaIsRemovedFromDefaultLayout() {
-    FloatingChatPanel panel;
-
-    QVERIFY(panel.previewLabel()->isHidden());
-    QVERIFY(!panel.previewLabel()->isVisible());
 }
 
 void UiWidgetTests::defaultPanelWindowSizeIsCompact() {

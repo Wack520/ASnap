@@ -95,7 +95,6 @@ private slots:
     void onCaptureConfirmed(const ais::capture::CaptureSelection& selection);
     void onCaptureCancelled();
     void onFollowUpRequested(const QString& text);
-    void onRecaptureRequested();
     void onSettingsSaveRequested();
     void onSettingsFetchModelsRequested();
     void onSettingsTextTestRequested();

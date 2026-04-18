@@ -22,6 +22,8 @@ class ConfigAndSessionTests final : public QObject {
 private slots:
     void configRoundTripsActiveProfile();
     void configRoundTripsCustomFirstPrompt();
+    void configMigratesLegacyDefaultFirstPromptV1();
+    void configMigratesLegacyDefaultFirstPromptV2();
     void presetTableCoversAllSupportedProtocols();
     void beginWithCaptureResetsConversationAndStoresNewImage();
     void failAssistantResponseReusesTrailingAssistantMessage();
@@ -88,6 +90,41 @@ void ConfigAndSessionTests::configRoundTripsCustomFirstPrompt() {
 
     const AppConfig loaded = store.load();
     QCOMPARE(loaded.firstPrompt, expected.firstPrompt);
+}
+
+void ConfigAndSessionTests::configMigratesLegacyDefaultFirstPromptV1() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    ConfigStore store(tempDir.filePath("app-config.json"));
+
+    AppConfig expected;
+    expected.firstPrompt = QStringLiteral(
+        "请只分析我框选到的截图内容，忽略截图工具本身的边框、按钮、输入框等界面元素。"
+        "如果截图为空白、选错区域、内容不清晰或无法判断，请明确告诉我。"
+        "回答尽量简洁，优先给出有用结论。");
+
+    QVERIFY(store.save(expected));
+
+    const AppConfig loaded = store.load();
+    QCOMPARE(loaded.firstPrompt, defaultFirstPromptText());
+}
+
+void ConfigAndSessionTests::configMigratesLegacyDefaultFirstPromptV2() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    ConfigStore store(tempDir.filePath("app-config.json"));
+
+    AppConfig expected;
+    expected.firstPrompt = QStringLiteral(
+        "请只分析我框选到的截图内容，忽略截图工具本身的边框、按钮、输入框等界面元素。"
+        "如果截图为空白、选错区域、内容不清晰或无法判断，请明确告诉我。");
+
+    QVERIFY(store.save(expected));
+
+    const AppConfig loaded = store.load();
+    QCOMPARE(loaded.firstPrompt, defaultFirstPromptText());
 }
 
 void ConfigAndSessionTests::presetTableCoversAllSupportedProtocols() {

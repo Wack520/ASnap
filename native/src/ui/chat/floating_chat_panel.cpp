@@ -14,8 +14,6 @@
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPen>
-#include <QPixmap>
-#include <QResizeEvent>
 #include <QScreen>
 #include <QSignalBlocker>
 #include <QSizePolicy>
@@ -307,8 +305,6 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     statusLabel_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     statusLabel_->setFixedHeight(16);
     statusLabel_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    previewLabel_ = new QLabel(QStringLiteral("暂无预览"), this);
-    previewLabel_->hide();
 
     reasoningToggleButton_ = new QToolButton(this);
     reasoningToggleButton_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
@@ -534,11 +530,6 @@ void FloatingChatPanel::refreshBoundSessionViews() {
     refreshInputState();
 }
 
-void FloatingChatPanel::setPreviewPixmap(const QPixmap& pixmap) {
-    previewPixmap_ = pixmap;
-    refreshPreview();
-}
-
 void FloatingChatPanel::setBusy(bool busy, const QString& status) {
     busy_ = busy;
     statusLabel_->setText(statusText(busy, status));
@@ -570,7 +561,6 @@ void FloatingChatPanel::applyAppearance(const QString& theme,
                                      lineColor,
                                      surfaceAlpha));
     setWindowOpacity(1.0);
-    refreshPreview();
     refreshReasoning();
     refreshHistory();
 }
@@ -584,11 +574,6 @@ void FloatingChatPanel::restoreSavedSize(const QSize& size) {
     const int maxWidth = maximumPanelWidthForRect(reference);
     resize(qBound(kMinimumPanelWidth, size.width(), maxWidth),
            qMax(kMinimumPanelHeight, size.height()));
-}
-
-void FloatingChatPanel::resizeEvent(QResizeEvent* event) {
-    QWidget::resizeEvent(event);
-    refreshPreview();
 }
 
 void FloatingChatPanel::mousePressEvent(QMouseEvent* event) {
@@ -764,11 +749,6 @@ void FloatingChatPanel::refreshReasoning() {
                                                         currentSurfaceAlpha_),
                                      rendered.html));
     reasoningView_->setVisible(reasoningExpanded_);
-}
-
-void FloatingChatPanel::refreshPreview() {
-    previewLabel_->hide();
-    previewLabel_->clear();
 }
 
 void FloatingChatPanel::refreshInputState() {

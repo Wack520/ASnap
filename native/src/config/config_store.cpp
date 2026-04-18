@@ -31,6 +31,19 @@ constexpr auto kWidthKey = "width";
 constexpr auto kHeightKey = "height";
 constexpr auto kLaunchAtLoginKey = "launchAtLogin";
 constexpr auto kFirstPromptKey = "firstPrompt";
+constexpr auto kLegacyFirstPromptV1 =
+    "请只分析我框选到的截图内容，忽略截图工具本身的边框、按钮、输入框等界面元素。"
+    "如果截图为空白、选错区域、内容不清晰或无法判断，请明确告诉我。"
+    "回答尽量简洁，优先给出有用结论。";
+constexpr auto kLegacyFirstPromptV2 =
+    "请只分析我框选到的截图内容，忽略截图工具本身的边框、按钮、输入框等界面元素。"
+    "如果截图为空白、选错区域、内容不清晰或无法判断，请明确告诉我。";
+
+[[nodiscard]] bool isLegacyDefaultFirstPrompt(const QString& value) {
+    const QString normalized = value.trimmed();
+    return normalized == QString::fromUtf8(kLegacyFirstPromptV1) ||
+           normalized == QString::fromUtf8(kLegacyFirstPromptV2);
+}
 
 [[nodiscard]] QJsonObject toJson(const ProviderProfile& profile) {
     return {
@@ -118,6 +131,9 @@ constexpr auto kFirstPromptKey = "firstPrompt";
     config.settingsDialogSize = sizeFromJson(json.value(kSettingsDialogSizeKey));
     config.launchAtLogin = json.value(kLaunchAtLoginKey).toBool(config.launchAtLogin);
     config.firstPrompt = json.value(kFirstPromptKey).toString(config.firstPrompt);
+    if (isLegacyDefaultFirstPrompt(config.firstPrompt)) {
+        config.firstPrompt = defaultFirstPromptText();
+    }
     return config;
 }
 
