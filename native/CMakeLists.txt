@@ -75,5 +75,8 @@ endif()
 
 add_executable(ai_screenshot WIN32 src/main.cpp resources/asnap.rc)
 target_link_libraries(ai_screenshot PRIVATE ai_screenshot_core)
+set_target_properties(ai_screenshot PROPERTIES
+    OUTPUT_NAME "ASnap"
+)
 
 add_subdirectory(tests)

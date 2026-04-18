@@ -10,7 +10,10 @@
 `ctest --test-dir build/native -C Debug --output-on-failure`
 
 ## Run
-`build\\native\\Debug\\ai_screenshot.exe`
+`build\\native\\Debug\\ASnap.exe`
+
+## Package (portable ZIP)
+`.\scripts\package-windows.ps1 -Configuration Release -RunTests -Version local`
 
 ## Notes
 - Qt Widgets only; no QML

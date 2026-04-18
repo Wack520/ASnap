@@ -2,6 +2,9 @@
 
 一个面向 Windows 桌面的 AI 截图助手，使用 **C++20 + Qt Widgets + CMake** 构建。
 
+[![windows-ci](https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml)
+[![windows-release](https://github.com/Wack520/ASnap/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Wack520/ASnap/actions/workflows/windows-release.yml)
+
 它的目标很简单：按下全局快捷键后冻结当前屏幕，用户自由框选任意区域，松开即完成截图，然后在截图附近弹出一个始终置顶的悬浮聊天窗，基于这张截图继续和多个大模型进行多轮对话。
 
 > 当前仓库同时保留两套实现：
@@ -126,7 +129,38 @@ ctest --test-dir build/native -C Debug --output-on-failure
 ### 运行
 
 ```powershell
-.\build\native\Debug\ai_screenshot.exe
+.\build\native\Debug\ASnap.exe
+```
+
+### 直接打包成可运行程序
+
+仓库已经附带 **Windows 便携版打包脚本**，会自动：
+
+- 配置 / 构建 `Release`
+- 可选执行测试
+- 调用 `windeployqt` 收集 Qt 运行库
+- 生成一个开箱即用的 **portable ZIP**
+
+本地打包命令：
+
+```powershell
+.\scripts\package-windows.ps1 -Configuration Release -RunTests -Version local
+```
+
+打包完成后会生成：
+
+```text
+dist/
+├─ ASnap-windows-x64-local/
+│  └─ ASnap.exe
+├─ ASnap-windows-x64-local.zip
+└─ ASnap-windows-x64-local.sha256.txt
+```
+
+解压后直接运行：
+
+```powershell
+.\ASnap.exe
 ```
 
 ---
@@ -170,6 +204,11 @@ ctest --test-dir build/native -C Debug --output-on-failure
 - **源码可用**
 - **功能持续打磨中**
 
+GitHub：
+
+- 仓库首页：<https://github.com/Wack520/ASnap>
+- Releases：<https://github.com/Wack520/ASnap/releases>
+
 ---
 
 ## 已知限制 / 待继续优化
@@ -186,6 +225,9 @@ ctest --test-dir build/native -C Debug --output-on-failure
 - 原生桌面主工程位于 `native/`
 - 精简构建说明见 `native/README.md`
 - 测试基于 Qt Test + CTest
+- GitHub Actions：
+  - `windows-ci.yml`：推送 / PR 自动构建并跑测试
+  - `windows-release.yml`：打 tag 后自动打包并上传 Release 资产
 
 如果你准备继续做公开维护，下一步建议补：
 
