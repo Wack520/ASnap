@@ -154,7 +154,10 @@ void CaptureOverlay::mouseDoubleClickEvent(QMouseEvent* event) {
 
     if (!currentLocalSelection().isValid() || currentLocalSelection().isEmpty()) {
         dragging_ = false;
-        finishedSelection_ = rect().adjusted(0, 0, -1, -1);
+        finishedSelection_ = localScreenRectAt(clampToBounds(event->position().toPoint()));
+        if (!finishedSelection_.isValid() || finishedSelection_.isEmpty()) {
+            finishedSelection_ = rect().adjusted(0, 0, -1, -1);
+        }
         update();
         confirmSelection(finishedSelection_);
         return;
@@ -196,6 +199,24 @@ QPoint CaptureOverlay::clampToBounds(const QPoint& point) const {
     return QPoint(
         std::clamp(point.x(), bounds.left(), bounds.right()),
         std::clamp(point.y(), bounds.top(), bounds.bottom()));
+}
+
+QRect CaptureOverlay::localScreenRectAt(const QPoint& point) const {
+    if (snapshot_.screenGeometries.isEmpty()) {
+        return {};
+    }
+
+    const QPoint virtualPoint = point + snapshot_.virtualGeometry.topLeft();
+    for (const QRect& screenGeometry : snapshot_.screenGeometries) {
+        if (!screenGeometry.contains(virtualPoint)) {
+            continue;
+        }
+
+        const QRect localRect = screenGeometry.translated(-snapshot_.virtualGeometry.topLeft());
+        return localRect.intersected(rect().adjusted(0, 0, -1, -1));
+    }
+
+    return {};
 }
 
 void CaptureOverlay::confirmSelection() {

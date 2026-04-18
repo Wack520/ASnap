@@ -315,6 +315,7 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
     bool first = true;
     qreal devicePixelRatio = 1.0;
     QList<CapturedScreenFrame> validFrames;
+    QList<QRect> screenGeometries;
 
     for (const CapturedScreenFrame& frame : frames) {
         if (frame.image.isNull() || !frame.geometry.isValid() || frame.geometry.isEmpty()) {
@@ -322,6 +323,7 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
         }
 
         validFrames.append(frame);
+        screenGeometries.append(frame.geometry);
         geometry = first ? frame.geometry : geometry.united(frame.geometry);
         first = false;
         devicePixelRatio = qMax(devicePixelRatio, qMax(1.0, frame.devicePixelRatio));
@@ -355,6 +357,7 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
         .displayImage = stitched,
         .captureImage = stitched,
         .virtualGeometry = geometry,
+        .screenGeometries = screenGeometries,
     };
 }
 

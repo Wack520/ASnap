@@ -36,6 +36,7 @@ protected:
 private:
     [[nodiscard]] QRect currentLocalSelection() const;
     [[nodiscard]] QPoint clampToBounds(const QPoint& point) const;
+    [[nodiscard]] QRect localScreenRectAt(const QPoint& point) const;
     void confirmSelection();
     void confirmSelection(const QRect& localSelection);
 

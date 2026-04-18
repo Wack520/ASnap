@@ -2,6 +2,7 @@
 #include <QColor>
 #include <QColorSpace>
 #include <QImage>
+#include <QPainter>
 #include <QPoint>
 #include <QRect>
 #include <QSignalSpy>
@@ -53,6 +54,7 @@ private slots:
     void overlayDraggingDimsOnlyOutsideSelection();
     void overlaySelectionUsesCornerHandlesInsteadOfFullOutline();
     void doubleClickWithoutSelectionCapturesWholeScreen();
+    void doubleClickWithoutSelectionCapturesClickedScreenOnMultiMonitorDesktop();
     void dragReleaseEmitsConfirmedSelection();
     void escapeEmitsCancelled();
 };
@@ -335,6 +337,42 @@ void CaptureFlowTests::doubleClickWithoutSelectionCapturesWholeScreen() {
     const QList<QVariant> arguments = confirmedSpy.takeFirst();
     const CaptureSelection selection = arguments.constFirst().value<CaptureSelection>();
     const QRect expectedLocal = QRect(QPoint(0, 0), overlay.rect().size()).adjusted(0, 0, -1, -1);
+
+    QCOMPARE(selection.localRect, expectedLocal);
+    QCOMPARE(selection.image.deviceIndependentSize().toSize(), expectedLocal.size());
+}
+
+void CaptureFlowTests::doubleClickWithoutSelectionCapturesClickedScreenOnMultiMonitorDesktop() {
+    QPixmap displayImage(QSize(448, 144));
+    displayImage.fill(Qt::black);
+
+    QPainter painter(&displayImage);
+    painter.fillRect(QRect(0, 0, 54, 96), Qt::darkRed);
+    painter.fillRect(QRect(192, 0, 256, 144), Qt::darkGreen);
+    painter.end();
+
+    const DesktopSnapshot snapshot{
+        .displayImage = displayImage,
+        .captureImage = displayImage,
+        .virtualGeometry = QRect(0, 0, 448, 144),
+        .screenGeometries = {QRect(0, 0, 54, 96), QRect(192, 0, 256, 144)},
+    };
+
+    CaptureOverlay overlay(snapshot);
+    QSignalSpy confirmedSpy(&overlay, &CaptureOverlay::captureConfirmed);
+    QSignalSpy cancelledSpy(&overlay, &CaptureOverlay::captureCancelled);
+
+    overlay.show();
+    QVERIFY(overlay.isVisible());
+
+    QTest::mouseDClick(&overlay, Qt::LeftButton, Qt::NoModifier, QPoint(260, 40));
+
+    QTRY_COMPARE(confirmedSpy.count(), 1);
+    QCOMPARE(cancelledSpy.count(), 0);
+
+    const QList<QVariant> arguments = confirmedSpy.takeFirst();
+    const CaptureSelection selection = arguments.constFirst().value<CaptureSelection>();
+    const QRect expectedLocal = QRect(192, 0, 256, 144).adjusted(0, 0, -1, -1);
 
     QCOMPARE(selection.localRect, expectedLocal);
     QCOMPARE(selection.image.deviceIndependentSize().toSize(), expectedLocal.size());

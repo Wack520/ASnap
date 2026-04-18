@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QList>
 #include <QPixmap>
 #include <QRect>
 
@@ -9,6 +10,7 @@ struct DesktopSnapshot {
     QPixmap displayImage;
     QPixmap captureImage;
     QRect virtualGeometry;
+    QList<QRect> screenGeometries;
 };
 
 }  // namespace ais::capture
