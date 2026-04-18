@@ -19,15 +19,16 @@
 #endif
 
 #define MyAppName "ASnap"
+#define MyAppVersionedName MyAppName + " " + AppVersion
 #define MyAppPublisher "Wack520"
 #define MyAppURL "https://github.com/Wack520/ASnap"
 #define MyAppExeName "ASnap.exe"
-#define MyAppAssocName MyAppName + " Installer"
 
 [Setup]
 AppId={{7D0AF2C8-11A8-4DE2-8A9E-4B5B2FBA0F35}
 AppName={#MyAppName}
 AppVersion={#AppVersion}
+AppVerName={#MyAppVersionedName}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
@@ -40,9 +41,15 @@ OutputDir={#OutputDir}
 OutputBaseFilename={#OutputBaseFilename}
 SetupIconFile={#RepoRoot}\native\assets\branding\asnap-icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayName={#MyAppName}
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=ASnap 安装程序
+VersionInfoProductName={#MyAppName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
+WizardImageFile={#RepoRoot}\packaging\windows\assets\wizard-side.bmp
+WizardSmallImageFile={#RepoRoot}\packaging\windows\assets\wizard-small.bmp
 PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -50,12 +57,13 @@ CloseApplications=yes
 RestartApplications=no
 UsePreviousAppDir=yes
 UsePreviousTasks=yes
+ShowLanguageDialog=no
 
 [Languages]
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "{#RepoRoot}\packaging\windows\languages\ChineseSimplified.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional tasks:"; Flags: unchecked
+Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -64,5 +72,8 @@ Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs 
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
+[CustomMessages]
+LaunchProgram=安装完成后立即启动 ASnap
+
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Description: "Launch {#MyAppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram}"; Flags: nowait postinstall skipifsilent

@@ -42,12 +42,19 @@ jobs:
         id: version
         shell: pwsh
         run: |
+          $versionValue = ""
           if ($env:GITHUB_REF_TYPE -eq "tag" -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_REF_NAME)) {
-            "value=$env:GITHUB_REF_NAME" >> $env:GITHUB_OUTPUT
+            $versionValue = $env:GITHUB_REF_NAME
           } elseif (-not [string]::IsNullOrWhiteSpace("${{ github.event.inputs.version }}")) {
-            "value=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+            $versionValue = "${{ github.event.inputs.version }}"
           } else {
-            "value=manual" >> $env:GITHUB_OUTPUT
+            $versionValue = "manual"
+          }
+          "value=$versionValue" >> $env:GITHUB_OUTPUT
+          if ($versionValue -match 'preview|alpha|beta|rc') {
+            "is_prerelease=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "is_prerelease=false" >> $env:GITHUB_OUTPUT
           }
 
       - name: Package portable build
@@ -64,16 +71,40 @@ jobs:
         with:
           name: ASnap-${{ steps.version.outputs.value }}-windows-x64
           path: |
-            dist/*.zip
             dist/*.exe
-            dist/*.sha256.txt
+
+      - name: Build release notes
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem dist -Filter 'ASnap-Setup-windows-x64-*.exe' | Select-Object -First 1
+          if ($null -eq $installer) { throw 'Installer EXE not found.' }
+          $shaPath = Join-Path $installer.DirectoryName ($installer.BaseName + '.sha256.txt')
+          if (-not (Test-Path $shaPath)) { throw 'Installer SHA256 file not found.' }
+          $shaLine = (Get-Content $shaPath | Select-Object -First 1).Trim()
+          $shaValue = ($shaLine -split '\s+')[0]
+          @"
+          ## 推荐下载
+
+          - **Windows 中文安装器（推荐）**：`$($installer.Name)`
+
+          ## 校验信息
+
+          - `SHA256`: `$($shaValue)`
+
+          ## 本次整理
+
+          - 清理公开仓库结构，移除旧版本原型代码
+          - Release 页面仅保留安装器主下载项
+          - 安装器完成中文化，并升级为更正式的品牌化界面
+          "@ | Set-Content dist/release-notes.md -Encoding utf8
 
       - name: Publish GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          name: ASnap ${{ steps.version.outputs.value }}
+          body_path: dist/release-notes.md
+          prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
           files: |
-            dist/*.zip
-            dist/*.exe
-            dist/*.sha256.txt
+            dist/ASnap-Setup-windows-x64-*.exe
