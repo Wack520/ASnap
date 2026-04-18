@@ -65,6 +65,7 @@ private slots:
     void floatingPanelCanRestoreSavedSize();
     void floatingPanelUsesFramelessTransparentWindow();
     void floatingPanelAppearanceUsesCustomPanelColor();
+    void floatingPanelAppearanceKeepsSurfaceAndBorderProperties();
     void escapeShortcutClosesFloatingPanel();
     void closeButtonHoverDoesNotShowResizeCursor();
     void floatingPanelCanBeDraggedByHeader();
@@ -522,6 +523,30 @@ void UiWidgetTests::floatingPanelAppearanceUsesCustomPanelColor() {
     QVERIFY(qAbs(sample.red() - 34) <= 20);
     QVERIFY(qAbs(sample.green() - 51) <= 20);
     QVERIFY(qAbs(sample.blue() - 68) <= 20);
+}
+
+void UiWidgetTests::floatingPanelAppearanceKeepsSurfaceAndBorderProperties() {
+    FloatingChatPanel panel;
+
+    panel.applyAppearance(QStringLiteral("dark"),
+                          0.72,
+                          QStringLiteral("#80335577"),
+                          QString(),
+                          QString());
+
+    const QString firstSurface = panel.property("panelSurfaceColor").toString();
+    const QString firstBorder = panel.property("panelBorderColor").toString();
+    QCOMPARE(firstSurface, QStringLiteral("#80335577"));
+    QVERIFY(!firstBorder.trimmed().isEmpty());
+
+    panel.applyAppearance(QStringLiteral("light"),
+                          0.66,
+                          QStringLiteral("#223344"),
+                          QStringLiteral("#f8fafc"),
+                          QStringLiteral("#6b7280"));
+
+    QCOMPARE(panel.property("panelSurfaceColor").toString(), QStringLiteral("#223344"));
+    QCOMPARE(panel.property("panelBorderColor").toString(), QStringLiteral("#6b7280"));
 }
 
 void UiWidgetTests::escapeShortcutClosesFloatingPanel() {

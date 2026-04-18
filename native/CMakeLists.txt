@@ -60,6 +60,8 @@ add_library(ai_screenshot_core STATIC
     src/ui/chat/code_syntax_highlighter.h
     src/ui/chat/floating_chat_panel.cpp
     src/ui/chat/floating_chat_panel.h
+    src/ui/chat/floating_chat_panel_helpers.cpp
+    src/ui/chat/floating_chat_panel_helpers.h
     src/ui/panel_placement.cpp
     src/ui/panel_placement.h
     src/ui/settings/settingsdialog.cpp
