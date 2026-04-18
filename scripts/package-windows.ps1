@@ -4,7 +4,8 @@ param(
     [string]$BuildDir = "build/native",
     [string]$OutputDir = "dist",
     [string]$Version = "",
-    [switch]$RunTests
+    [switch]$RunTests,
+    [switch]$CreateInstaller
 )
 
 Set-StrictMode -Version Latest
@@ -95,6 +96,36 @@ function Find-WinDeployQt {
     throw "windeployqt.exe was not found. Make sure the Qt Widgets toolchain is installed."
 }
 
+function Find-InnoSetupCompiler {
+    $candidates = @(@(
+        $env:ISCC_EXE,
+        (Join-Path $env:LOCALAPPDATA "Programs\Inno Setup 6\ISCC.exe"),
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+        "C:\Program Files\Inno Setup 6\ISCC.exe"
+    ) | Where-Object { $_ -and (Test-Path $_) })
+
+    if ($candidates.Count -gt 0) {
+        return (Resolve-Path $candidates[0]).Path
+    }
+
+    $command = Get-Command iscc -ErrorAction SilentlyContinue
+    if ($null -ne $command) {
+        return $command.Source
+    }
+
+    throw "ISCC.exe was not found. Install Inno Setup 6 or set ISCC_EXE."
+}
+
+function Write-Sha256File {
+    param(
+        [string]$TargetPath,
+        [string]$HashOutputPath
+    )
+
+    $hash = Get-FileHash -Algorithm SHA256 -Path $TargetPath
+    "{0} *{1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path $TargetPath -Leaf) | Set-Content -Path $HashOutputPath -Encoding ascii
+}
+
 function Invoke-Step {
     param(
         [string]$Title,
@@ -117,7 +148,10 @@ $versionSuffix = if ([string]::IsNullOrWhiteSpace($Version)) { "local" } else { 
 $packageFolderName = "ASnap-windows-x64-$versionSuffix"
 $packageRoot = Join-Path $outputDirPath $packageFolderName
 $zipPath = Join-Path $outputDirPath "$packageFolderName.zip"
-$shaPath = Join-Path $outputDirPath "$packageFolderName.sha256.txt"
+$zipShaPath = Join-Path $outputDirPath "$packageFolderName.sha256.txt"
+$installerName = "ASnap-Setup-windows-x64-$versionSuffix"
+$installerPath = Join-Path $outputDirPath "$installerName.exe"
+$installerShaPath = Join-Path $outputDirPath "$installerName.sha256.txt"
 
 New-Item -ItemType Directory -Force -Path $buildDirPath | Out-Null
 New-Item -ItemType Directory -Force -Path $outputDirPath | Out-Null
@@ -164,8 +198,14 @@ if (Test-Path $packageRoot) {
 if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath
 }
-if (Test-Path $shaPath) {
-    Remove-Item -Force $shaPath
+if (Test-Path $zipShaPath) {
+    Remove-Item -Force $zipShaPath
+}
+if (Test-Path $installerPath) {
+    Remove-Item -Force $installerPath
+}
+if (Test-Path $installerShaPath) {
+    Remove-Item -Force $installerShaPath
 }
 
 New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
@@ -186,10 +226,34 @@ Invoke-Step "Create ZIP package" {
     Compress-Archive -Path $packageRoot -DestinationPath $zipPath -CompressionLevel Optimal -Force
 }
 
-$hash = Get-FileHash -Algorithm SHA256 -Path $zipPath
-"{0} *{1}" -f $hash.Hash.ToLowerInvariant(), (Split-Path $zipPath -Leaf) | Set-Content -Path $shaPath -Encoding ascii
+Write-Sha256File -TargetPath $zipPath -HashOutputPath $zipShaPath
+
+if ($CreateInstaller.IsPresent) {
+    $isccExe = Find-InnoSetupCompiler
+    $installerScriptPath = Join-Path $repoRoot "packaging\windows\asnap.iss"
+
+    Invoke-Step "Create installer EXE" {
+        & $isccExe `
+            "/DAppVersion=$versionSuffix" `
+            "/DSourceDir=$packageRoot" `
+            "/DOutputDir=$outputDirPath" `
+            "/DOutputBaseFilename=$installerName" `
+            "/DRepoRoot=$repoRoot" `
+            $installerScriptPath
+    }
+
+    if (-not (Test-Path $installerPath)) {
+        throw "Installer EXE was not generated."
+    }
+
+    Write-Sha256File -TargetPath $installerPath -HashOutputPath $installerShaPath
+}
 
 Write-Host ""
 Write-Host "Package created:" -ForegroundColor Green
 Write-Host "ZIP    : $zipPath"
-Write-Host "SHA256 : $shaPath"
+Write-Host "SHA256 : $zipShaPath"
+if ($CreateInstaller.IsPresent) {
+    Write-Host "SETUP  : $installerPath"
+    Write-Host "SHA256 : $installerShaPath"
+}

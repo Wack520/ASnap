@@ -34,6 +34,10 @@ jobs:
           arch: win64_msvc2019_64
           cache: true
 
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: choco install innosetup --no-progress -y
+
       - name: Resolve version
         id: version
         shell: pwsh
@@ -53,6 +57,7 @@ jobs:
           -Configuration Release
           -Version "${{ steps.version.outputs.value }}"
           -RunTests
+          -CreateInstaller
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
@@ -60,6 +65,7 @@ jobs:
           name: ASnap-${{ steps.version.outputs.value }}-windows-x64
           path: |
             dist/*.zip
+            dist/*.exe
             dist/*.sha256.txt
 
       - name: Publish GitHub Release
@@ -69,4 +75,5 @@ jobs:
           generate_release_notes: true
           files: |
             dist/*.zip
+            dist/*.exe
             dist/*.sha256.txt

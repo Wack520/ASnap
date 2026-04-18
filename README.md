@@ -146,11 +146,12 @@ ctest --test-dir build/native -C Debug --output-on-failure
 - 可选执行测试
 - 调用 `windeployqt` 收集 Qt 运行库
 - 生成一个开箱即用的 **portable ZIP**
+- 可选再生成一个**单文件安装器 EXE**
 
 本地打包命令：
 
 ```powershell
-.\scripts\package-windows.ps1 -Configuration Release -RunTests -Version local
+.\scripts\package-windows.ps1 -Configuration Release -RunTests -CreateInstaller -Version local
 ```
 
 打包完成后会生成：
@@ -159,6 +160,8 @@ ctest --test-dir build/native -C Debug --output-on-failure
 dist/
 ├─ ASnap-windows-x64-local/
 │  └─ ASnap.exe
+├─ ASnap-Setup-windows-x64-local.exe
+├─ ASnap-Setup-windows-x64-local.sha256.txt
 ├─ ASnap-windows-x64-local.zip
 └─ ASnap-windows-x64-local.sha256.txt
 ```
@@ -168,6 +171,14 @@ dist/
 ```powershell
 .\ASnap.exe
 ```
+
+如果你想让普通用户**下载一个 `.exe` 就安装并开始使用**，直接分发：
+
+```text
+ASnap-Setup-windows-x64-<version>.exe
+```
+
+即可。
 
 ---
 
@@ -235,7 +246,7 @@ GitHub：
 - 测试基于 Qt Test + CTest
 - GitHub Actions：
   - `windows-ci.yml`：推送 / PR 自动构建并跑测试
-  - `windows-release.yml`：打 tag 后自动打包并上传 Release 资产
+  - `windows-release.yml`：打 tag 后自动打包并上传 Release 资产（ZIP + 安装器 EXE）
 
 如果你准备继续做公开维护，下一步建议补：
 
