@@ -96,7 +96,8 @@ jobs:
 
           - 清理公开仓库结构，移除旧版本原型代码
           - Release 页面仅保留安装器主下载项
-          - 安装器完成中文化，并升级为更正式的品牌化界面
+          - 安装器保留中文体验，恢复默认现代向导样式
+          - 安装时支持手动选择安装路径
           "@ | Set-Content dist/release-notes.md -Encoding utf8
 
       - name: Publish GitHub Release
