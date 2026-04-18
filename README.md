@@ -1,108 +1,101 @@
 # ASnap
 
-一个面向 Windows 桌面的 AI 截图助手，使用 **C++20 + Qt Widgets + CMake** 构建。
+Windows 桌面 AI 截图助手。  
+冻结屏幕、自由框选、立刻提问，并在截图旁继续追问。
 
-[![windows-ci](https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml)
-[![windows-release](https://github.com/Wack520/ASnap/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Wack520/ASnap/actions/workflows/windows-release.yml)
+<p>
+  <a href="https://github.com/Wack520/ASnap/releases">
+    <img src="https://img.shields.io/badge/Download-Windows%20Installer-4f8cff?style=for-the-badge" alt="Download Windows Installer" />
+  </a>
+  <a href="https://github.com/Wack520/ASnap/releases">
+    <img src="https://img.shields.io/badge/Releases-Preview-111827?style=for-the-badge" alt="Releases" />
+  </a>
+  <a href="https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml">
+    <img src="https://img.shields.io/github/actions/workflow/status/Wack520/ASnap/windows-ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" />
+  </a>
+  <a href="./LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-111827?style=for-the-badge" alt="MIT License" />
+  </a>
+</p>
 
-它的目标很简单：按下全局快捷键后冻结当前屏幕，用户自由框选任意区域，松开即完成截图，然后在截图附近弹出一个始终置顶的悬浮聊天窗，基于这张截图继续和多个大模型进行多轮对话。
+<p>
+  <img src="./docs/media/hero.png" alt="ASnap Hero" width="100%" />
+</p>
 
-> 当前公开仓库只保留原生桌面主线实现：
->
-> - `native/`：C++ / Qt 原生版本，推荐使用
+## Demo
 
----
+<p>
+  <img src="./docs/media/demo.gif" alt="ASnap demo" width="100%" />
+</p>
 
-## 功能概览
+<table>
+  <tr>
+    <td width="33.33%"><img src="./docs/media/capture.png" alt="Capture flow" /></td>
+    <td width="33.33%"><img src="./docs/media/chat.png" alt="Floating chat panel" /></td>
+    <td width="33.33%"><img src="./docs/media/settings.png" alt="Settings dialog" /></td>
+  </tr>
+  <tr>
+    <td><sub>冻结屏幕后自由框选</sub></td>
+    <td><sub>截图旁继续对话</sub></td>
+    <td><sub>Provider / 模型 / 外观 / 快捷键</sub></td>
+  </tr>
+</table>
+
+## 它能做什么
+
+- 全局快捷键触发截图，不打断当前桌面节奏
+- 截图完成后，悬浮面板贴着选区出现，直接继续问
+- Markdown、代码块、链接、思考内容分区都能正常显示
+- 同时支持 OpenAI、OpenAI Responses、OpenAI-compatible、Gemini、Claude
+- 设置页可以测试文本连接、测试图片理解、录入快捷键、调整外观
+
+## 核心体验
 
 ### 截图
 - 托盘常驻
-- 全局快捷键
-- 双快捷键模式：
-  - AI 截图
-  - 普通截图
+- AI 截图 / 普通截图双快捷键
 - 全屏冻结后自由框选
+- 双击直接全屏截图
 - `Esc` 取消
-- 不框选时支持双击直接全屏截图
 
-### AI 对话
-- 统一 Provider 抽象
-- 当前支持：
-  - OpenAI Chat Completions
-  - OpenAI Responses
-  - OpenAI-compatible
-  - Gemini
-  - Claude
-- 文本请求测试
-- 图片理解测试
+### 对话
 - 基于截图继续追问
-- 回复中支持排队发送下一条追问
+- 回复中支持排队发送下一条消息
+- Markdown / 表格 / 代码块 / 链接
+- 代码块复制按钮
 - 空响应自动重试
 
-### 悬浮聊天窗
+### 面板
 - 永远置顶
 - 跟随截图位置
 - 不出屏幕边界
-- 深色 / 浅色主题
-- 可调面板背景色、字体色、边框色、透明度
+- 深色 / 浅色
+- 可调背景色、文字色、边框色、透明度
 - 可拖动、可调整宽度
-- Markdown 渲染增强：
-  - 代码块高亮
-  - 复制按钮
-  - 表格显示
-  - 链接点击
-  - 思考内容折叠显示
-  - 流式输出
 
-### 设置页
-- 协议类型 / Base URL / API Key / 模型 分离配置
-- 协议切换自动带出推荐 Base URL
-- 允许手动改为中转地址
-- 获取模型
-- 测试文字连接 / 测试图片理解
-- 自定义首轮中文提示词
-- 快捷键录入
-- Windows 当前用户登录后静默启动
+## 支持的 Provider
 
----
+| 类型 | 说明 |
+| --- | --- |
+| OpenAI Chat | 标准 Chat Completions 接口 |
+| OpenAI Responses | Responses 接口 |
+| OpenAI-compatible | 兼容 OpenAI 协议的中转 / 自建服务 |
+| Gemini | Google Gemini |
+| Claude | Anthropic Claude |
 
-## 技术栈
+## 下载与安装
 
-- C++20
-- Qt 6 Widgets / Network / Test
-- CMake
-- CTest
-- Win32 API（全局快捷键、DPI、开机自启等）
+前往 Releases 页面下载 Windows 安装器：
 
-设计约束：
+- **Releases:** https://github.com/Wack520/ASnap/releases
 
-- **UI 控件**：遵循 Qt `QObject` 父子对象树管理生命周期
-- **非 UI 业务对象**：统一使用现代 C++ 智能指针（`std::unique_ptr` / `std::shared_ptr`）
-- **构建系统**：仅使用 CMake，不使用 qmake
+当前发布默认提供：
 
----
+- `ASnap-Setup-windows-x64-<version>.exe`
 
-## 当前目录结构
+安装后即可直接启动，无需手动拷贝 Qt 运行库。
 
-```text
-.
-├─ .github/workflows/                 # CI / Release
-├─ native/                            # 当前主线：C++ / Qt 原生桌面版
-│  ├─ src/
-│  ├─ tests/
-│  └─ README.md
-├─ docs/
-│  ├─ specs/                          # 设计规格
-│  └─ plans/                          # 实施计划 / 阶段记录
-├─ packaging/                         # 安装器与发布资源
-├─ scripts/                           # 打包 / 辅助脚本
-├─ README.md
-└─ LICENSE
-```
-
----
-
-## 构建与运行（Windows）
+## 从源码构建
 
 ### 依赖
 
@@ -114,7 +107,7 @@
 ### 配置
 
 ```powershell
-$env:CMAKE_PREFIX_PATH='C:\Qt\6.6.3\msvc2022_64'   # 按你的 Qt 实际安装路径 / kit 名称修改
+$env:CMAKE_PREFIX_PATH='C:\Qt\6.6.3\msvc2022_64'
 cmake -S native -B build/native
 ```
 
@@ -136,127 +129,38 @@ ctest --test-dir build/native -C Debug --output-on-failure
 .\build\native\Debug\ASnap.exe
 ```
 
-### 直接打包成可运行程序
-
-仓库已经附带 **Windows 便携版打包脚本**，会自动：
-
-- 配置 / 构建 `Release`
-- 可选执行测试
-- 调用 `windeployqt` 收集 Qt 运行库
-- 生成一个开箱即用的 **portable ZIP**
-- 可选再生成一个**单文件安装器 EXE**
-
-本地打包命令：
+### 打包安装器
 
 ```powershell
 .\scripts\package-windows.ps1 -Configuration Release -RunTests -CreateInstaller -Version local
 ```
 
-打包完成后会生成：
+## 项目结构
 
 ```text
-dist/
-├─ ASnap-windows-x64-local/
-│  └─ ASnap.exe
-├─ ASnap-Setup-windows-x64-local.exe
-├─ ASnap-Setup-windows-x64-local.sha256.txt
-├─ ASnap-windows-x64-local.zip
-└─ ASnap-windows-x64-local.sha256.txt
+.
+├─ native/       # Qt / C++ 主工程
+├─ packaging/    # 安装器与发布资源
+├─ scripts/      # 打包脚本
+├─ docs/specs/   # 设计文档
+└─ docs/plans/   # 实施计划
 ```
 
-解压后直接运行：
+## 隐私说明
 
-```powershell
-.\ASnap.exe
-```
+你发送给模型服务端的内容可能包括：
 
-如果你想让普通用户**下载一个 `.exe` 就安装并开始使用**，直接分发：
+- 你框选到的截图
+- 你输入的文字消息
+- 与当前会话相关的上下文
 
-```text
-ASnap-Setup-windows-x64-<version>.exe
-```
+如果你使用第三方 Base URL 或中转服务，请先确认对方的日志、存储和隐私策略。
 
-即可。
+## 路线图
 
-GitHub Release 默认只发布这一项安装器资源，页面更简洁：
-
-```text
-ASnap-Setup-windows-x64-<version>.exe
-```
-
----
-
-## 使用流程
-
-1. 启动应用后常驻托盘
-2. 打开设置页配置：
-   - Provider 协议
-   - Base URL
-   - API Key
-   - 模型
-3. 点击：
-   - `测试文字连接`
-   - `测试图片理解`
-4. 设置快捷键、外观和首轮提示词
-5. 使用 AI 截图快捷键开始截图并对话
-
----
-
-## 隐私与安全
-
-- AI 分析时，**你框选到的截图内容** 与相关文本消息可能会被发送到你配置的模型服务端
-- 这个服务端可能是：
-  - OpenAI 官方
-  - Gemini 官方
-  - Claude 官方
-  - OpenAI-compatible 中转/代理接口
-- 因此，**不要把你不愿上传的敏感信息直接发给不可信的 Provider 或中转地址**
-- 如果你使用第三方 Base URL，请自行确认其日志、存储、合规与隐私策略
-
----
-
-## 当前状态
-
-这个项目已经适合以 **GitHub 公开预览 / 早期开源版本** 的形式发布，并继续迭代。
-
-当前更适合这样定位：
-
-- **Windows 优先**
-- **源码可用**
-- **功能持续打磨中**
-
-GitHub：
-
-- 仓库首页：<https://github.com/Wack520/ASnap>
-- Releases：<https://github.com/Wack520/ASnap/releases>
-
----
-
-## 已知限制 / 待继续优化
-
-- 当前主要面向 Windows，macOS 仍在规划中
-- 某些 **HDR + Chrome** 场景下截图曝光仍需继续优化
-- 多屏 / 远程控制等复杂桌面环境还在持续兼容打磨
-- 暂未提供正式安装包与自动更新流程
-
----
-
-## 开发说明
-
-- 原生桌面主工程位于 `native/`
-- 精简构建说明见 `native/README.md`
-- 设计与计划文档位于 `docs/specs/`、`docs/plans/`
-- 测试基于 Qt Test + CTest
-- GitHub Actions：
-  - `windows-ci.yml`：推送 / PR 自动构建并跑测试
-  - `windows-release.yml`：打 tag 后自动打包并上传正式安装器 EXE
-
-如果你准备继续做公开维护，下一步建议补：
-
-- 截图 / GIF 演示素材
-- 更完整的英文 README 或双语说明
-
----
+- 持续优化 HDR / 多屏 / 远程桌面兼容性
+- 继续打磨聊天面板与设置页体验
+- 评估自动更新与更多平台支持
 
 ## License
 

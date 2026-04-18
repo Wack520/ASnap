@@ -62,6 +62,16 @@ ShowLanguageDialog=no
 [Languages]
 Name: "chinesesimplified"; MessagesFile: "{#RepoRoot}\packaging\windows\languages\ChineseSimplified.isl"
 
+[Messages]
+WelcomeLabel1=欢迎安装 [name]
+WelcomeLabel2=[name/ver] 将安装到您的电脑。%n%n它适合快速截图、贴边提问和继续追问。安装前建议先关闭其他正在运行的程序。
+SelectDirLabel3=安装程序会将 [name] 安装到下面的文件夹中。
+SelectTasksLabel2=选择您希望安装程序额外执行的项目，然后点击“下一步”。
+ReadyLabel1=安装程序已准备就绪，可以开始安装 [name]。
+ReadyLabel2a=点击“安装”继续。如果您想返回修改设置，请点击“上一步”。
+FinishedHeadingLabel=[name] 安装完成
+FinishedLabel=ASnap 已安装到这台电脑。您现在可以直接启动它开始使用。
+
 [Tasks]
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "附加任务："; Flags: unchecked
 
