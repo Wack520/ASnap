@@ -86,11 +86,11 @@ jobs:
           @"
           ## 推荐下载
 
-          - **Windows 中文安装器（推荐）**：`$($installer.Name)`
+          - **Windows 中文安装器（推荐）**：$($installer.Name)
 
           ## 校验信息
 
-          - `SHA256`: `$($shaValue)`
+          - SHA256: $($shaValue)
 
           ## 本次整理
 
