@@ -63,6 +63,8 @@ add_library(ai_screenshot_core STATIC
     src/ui/panel_placement.cpp
     src/ui/panel_placement.h
     src/ui/settings/settingsdialog.cpp
+    src/ui/settings/settingsdialog_appearance_helpers.cpp
+    src/ui/settings/settingsdialog_appearance_helpers.h
     src/ui/settings/settingsdialog.h
     resources/branding.qrc
 )
