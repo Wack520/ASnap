@@ -7,10 +7,10 @@
 
 它的目标很简单：按下全局快捷键后冻结当前屏幕，用户自由框选任意区域，松开即完成截图，然后在截图附近弹出一个始终置顶的悬浮聊天窗，基于这张截图继续和多个大模型进行多轮对话。
 
-> 当前仓库同时保留两套实现：
+> 当前仓库已经按公开展示做过整理：
 >
 > - `native/`：当前主线实现，C++ / Qt 原生版本，推荐使用
-> - `ai_screenshot/`、`screenshot_ai.py`：较早期的 Python 原型与参考代码
+> - `legacy/python-prototype/`：较早期的 Python 原型与历史打包文件，仅作归档参考
 
 ---
 
@@ -87,13 +87,19 @@
 
 ```text
 .
-├─ native/                  # 当前主线：C++ / Qt 原生桌面版
+├─ .github/workflows/                 # CI / Release
+├─ native/                            # 当前主线：C++ / Qt 原生桌面版
 │  ├─ src/
 │  ├─ tests/
 │  └─ README.md
-├─ ai_screenshot/           # 旧版 Python 原型
-├─ docs/superpowers/        # 设计文档 / 实施计划
-└─ screenshot_ai.py         # 旧入口脚本
+├─ docs/
+│  ├─ specs/                          # 设计规格
+│  └─ plans/                          # 实施计划 / 阶段记录
+├─ legacy/
+│  └─ python-prototype/               # 旧版 Python 原型、测试、PyInstaller spec
+├─ scripts/                           # 打包 / 辅助脚本
+├─ README.md
+└─ LICENSE
 ```
 
 ---
@@ -224,6 +230,8 @@ GitHub：
 
 - 原生桌面主工程位于 `native/`
 - 精简构建说明见 `native/README.md`
+- 设计与计划文档位于 `docs/specs/`、`docs/plans/`
+- 旧 Python 原型已归档到 `legacy/python-prototype/`
 - 测试基于 Qt Test + CTest
 - GitHub Actions：
   - `windows-ci.yml`：推送 / PR 自动构建并跑测试
@@ -231,9 +239,8 @@ GitHub：
 
 如果你准备继续做公开维护，下一步建议补：
 
-- GitHub Actions CI
-- Release 打包脚本
-- 截图/GIF 演示素材
+- 截图 / GIF 演示素材
+- 安装包（而不仅是便携版 ZIP）
 - 更完整的英文 README 或双语说明
 
 ---
