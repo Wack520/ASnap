@@ -2,7 +2,6 @@
 
 #include <algorithm>
 
-#include <QColorDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
@@ -13,6 +12,7 @@
 
 #include "config/provider_preset.h"
 #include "ui/settings/settingsdialog_appearance_helpers.h"
+#include "ui/settings/settingsdialog_appearance_section.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -28,16 +28,8 @@ using ais::config::ProviderPreset;
 using ais::config::ProviderProfile;
 using ais::config::ProviderProtocol;
 using ais::config::presetFor;
-using ais::ui::settings_appearance::autoBorderColor;
-using ais::ui::settings_appearance::autoTextColor;
-using ais::ui::settings_appearance::colorButtonStyle;
-using ais::ui::settings_appearance::cssColor;
 using ais::ui::settings_appearance::dialogStyleSheetForTheme;
 using ais::ui::settings_appearance::effectiveThemeName;
-using ais::ui::settings_appearance::fallbackSurfaceColor;
-using ais::ui::settings_appearance::mutedTextColorForTheme;
-using ais::ui::settings_appearance::previewDocumentCss;
-using ais::ui::settings_appearance::previewDocumentHtml;
 using ais::ui::settings_appearance::serializeColor;
 
 [[nodiscard]] ProviderProtocol protocolFromCombo(const QComboBox* comboBox) {
@@ -112,15 +104,18 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelField_->setObjectName(QStringLiteral("modelCombo"));
     modelField_->setEditable(true);
     modelField_->setInsertPolicy(QComboBox::NoInsert);
+
     modelPopupButton_ = new QToolButton(this);
     modelPopupButton_->setObjectName(QStringLiteral("modelPopupButton"));
     modelPopupButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
     modelPopupButton_->setArrowType(Qt::DownArrow);
     modelPopupButton_->setToolTip(QStringLiteral("展开模型列表"));
     modelPopupButton_->setCursor(Qt::PointingHandCursor);
+
     fetchModelsButton_ = new QPushButton(QStringLiteral("获取模型"), this);
     fetchModelsButton_->setObjectName(QStringLiteral("modelActionButton"));
     fetchModelsButton_->setMinimumWidth(72);
+
     modelActionStatusLabel_ = new QLabel(QStringLiteral("可以先获取模型列表，再做文字 / 图片测试。"), this);
     modelActionStatusLabel_->setObjectName(QStringLiteral("settingsSubtitle"));
     modelActionStatusLabel_->setWordWrap(true);
@@ -131,74 +126,16 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     screenshotShortcutField_ = new QKeySequenceEdit(this);
     screenshotShortcutField_->setMaximumSequenceLength(1);
 
-    themeField_ = new QComboBox(this);
-    themeField_->addItem(QStringLiteral("System"), QStringLiteral("system"));
-    themeField_->addItem(QStringLiteral("Dark"), QStringLiteral("dark"));
-    themeField_->addItem(QStringLiteral("Light"), QStringLiteral("light"));
-
-    opacityField_ = new QDoubleSpinBox(this);
-    opacityField_->setRange(0.0, 100.0);
-    opacityField_->setSingleStep(5.0);
-    opacityField_->setDecimals(0);
-    opacityField_->setSuffix(QStringLiteral("%"));
-    opacityField_->setToolTip(QStringLiteral("想要透明背景，直接调这里；0% 接近全透明，100% 完全不透明。"));
-
-    panelColorButton_ = new QPushButton(this);
-    panelColorButton_->setMinimumHeight(38);
-    panelTextColorButton_ = new QPushButton(this);
-    panelTextColorButton_->setMinimumHeight(38);
-    panelTextAutoButton_ = new QPushButton(QStringLiteral("恢复自动"), this);
-    panelBorderColorButton_ = new QPushButton(this);
-    panelBorderColorButton_->setMinimumHeight(38);
-    panelBorderAutoButton_ = new QPushButton(QStringLiteral("恢复自动"), this);
-
-    previewSurface_ = new QFrame(this);
-    previewSurface_->setObjectName(QStringLiteral("previewSurface"));
-    previewSurface_->setFrameShape(QFrame::NoFrame);
-    previewTitleLabel_ = new QLabel(QStringLiteral("真实聊天框预览"), previewSurface_);
-    previewTitleLabel_->setStyleSheet(QStringLiteral("font-weight: 700;"));
-    previewStatusLabel_ = new QLabel(QStringLiteral("当前配色、边框和透明度会实时同步到这个示例悬浮窗。"),
-                                     previewSurface_);
-    previewStatusLabel_->setWordWrap(true);
-    previewReasoningToggle_ = new QToolButton(previewSurface_);
-    previewReasoningToggle_->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
-    previewReasoningToggle_->setArrowType(Qt::RightArrow);
-    previewReasoningToggle_->setText(QStringLiteral("展开思考"));
-    previewReasoningToggle_->setEnabled(false);
-    previewHistoryView_ = new QTextBrowser(previewSurface_);
-    previewHistoryView_->setFrameShape(QFrame::NoFrame);
-    previewHistoryView_->setOpenLinks(false);
-    previewHistoryView_->setOpenExternalLinks(false);
-    previewHistoryView_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    previewHistoryView_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    previewHistoryView_->setMinimumHeight(220);
-    previewHistoryView_->setMaximumHeight(220);
-    previewInputField_ = new QLineEdit(previewSurface_);
-    previewInputField_->setPlaceholderText(QStringLiteral("继续追问，按 Enter 发送…"));
-    previewInputField_->setEnabled(false);
-    previewSendButton_ = new QPushButton(QStringLiteral("↑"), previewSurface_);
-    previewSendButton_->setEnabled(false);
-    auto* previewLayout = new QVBoxLayout(previewSurface_);
-    previewLayout->setContentsMargins(14, 12, 14, 12);
-    previewLayout->setSpacing(8);
-    previewLayout->addWidget(previewTitleLabel_);
-    previewLayout->addWidget(previewStatusLabel_);
-    previewLayout->addWidget(previewReasoningToggle_);
-    previewLayout->addWidget(previewHistoryView_);
-    auto* previewInputRow = new QHBoxLayout();
-    previewInputRow->setSpacing(8);
-    previewInputRow->addWidget(previewInputField_, 1);
-    previewInputRow->addWidget(previewSendButton_);
-    previewLayout->addLayout(previewInputRow);
-
     firstPromptField_ = new QPlainTextEdit(this);
     firstPromptField_->setPlaceholderText(QStringLiteral("请输入截图后自动发送给 AI 的首轮提示词"));
     firstPromptField_->setMinimumHeight(96);
+
     launchAtLoginCheckBox_ = new QCheckBox(QStringLiteral("Windows 当前用户登录后静默启动"), this);
 
     testConnectionButton_ = new QPushButton(QStringLiteral("测试文字连接"), this);
     testConnectionButton_->setObjectName(QStringLiteral("modelActionButton"));
     testConnectionButton_->setMinimumWidth(72);
+
     testImageButton_ = new QPushButton(QStringLiteral("测试图片理解"), this);
     testImageButton_->setObjectName(QStringLiteral("modelActionButton"));
     testImageButton_->setMinimumWidth(72);
@@ -209,6 +146,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     providerForm->setContentsMargins(12, 12, 12, 12);
     providerForm->setSpacing(8);
     providerForm->setHorizontalSpacing(12);
+
     auto* modelToolsRow = new QWidget(providerCard);
     auto* modelToolsLayout = new QHBoxLayout(modelToolsRow);
     modelToolsLayout->setContentsMargins(0, 0, 0, 0);
@@ -259,41 +197,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     shortcutFieldsLayout->addWidget(screenshotShortcutColumn, 1);
     providerForm->addRow(QStringLiteral("快捷键"), shortcutFieldsRow);
 
-    auto* appearanceCard = new QFrame(this);
-    appearanceCard->setObjectName(QStringLiteral("settingsCard"));
-    auto* appearanceLayout = new QVBoxLayout(appearanceCard);
-    appearanceLayout->setContentsMargins(12, 12, 12, 12);
-    appearanceLayout->setSpacing(10);
-
-    auto* previewShell = new QFrame(appearanceCard);
-    previewShell->setObjectName(QStringLiteral("previewShell"));
-    auto* previewShellLayout = new QVBoxLayout(previewShell);
-    previewShellLayout->setContentsMargins(12, 12, 12, 12);
-    previewShellLayout->addWidget(previewSurface_);
-
-    auto* appearanceForm = new QFormLayout();
-    appearanceForm->setSpacing(8);
-    appearanceForm->addRow(QStringLiteral("主题"), themeField_);
-    appearanceForm->addRow(QStringLiteral("背景不透明度"), opacityField_);
-    appearanceForm->addRow(QStringLiteral("聊天背景色"), panelColorButton_);
-    auto* textColorRow = new QHBoxLayout();
-    textColorRow->setSpacing(8);
-    textColorRow->addWidget(panelTextColorButton_, 1);
-    textColorRow->addWidget(panelTextAutoButton_);
-    appearanceForm->addRow(QStringLiteral("字体颜色"), textColorRow);
-    auto* borderColorRow = new QHBoxLayout();
-    borderColorRow->setSpacing(8);
-    borderColorRow->addWidget(panelBorderColorButton_, 1);
-    borderColorRow->addWidget(panelBorderAutoButton_);
-    appearanceForm->addRow(QStringLiteral("边框颜色"), borderColorRow);
-    auto* transparencyHint = new QLabel(QStringLiteral("想要透明背景时，直接调“背景不透明度”，不用手动输入透明色。"),
-                                        appearanceCard);
-    transparencyHint->setObjectName(QStringLiteral("settingsSubtitle"));
-    transparencyHint->setWordWrap(true);
-
-    appearanceLayout->addWidget(previewShell);
-    appearanceLayout->addLayout(appearanceForm);
-    appearanceLayout->addWidget(transparencyHint);
+    appearanceSection_ = new SettingsDialogAppearanceSection(this);
 
     auto* promptCard = new QFrame(this);
     promptCard->setObjectName(QStringLiteral("settingsCard"));
@@ -325,7 +229,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     scrollContentLayout->addWidget(headerLabel_);
     scrollContentLayout->addWidget(subtitleLabel_);
     scrollContentLayout->addWidget(providerCard);
-    scrollContentLayout->addWidget(appearanceCard);
+    scrollContentLayout->addWidget(appearanceSection_);
     scrollContentLayout->addWidget(promptCard);
     scrollContentLayout->addStretch(1);
 
@@ -351,51 +255,60 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     if (!config.activeProfile.model.trimmed().isEmpty()) {
         modelField_->addItem(config.activeProfile.model.trimmed());
     }
+
     aiShortcutField_->setKeySequence(QKeySequence::fromString(config.aiShortcut, QKeySequence::PortableText));
     screenshotShortcutField_->setKeySequence(
         QKeySequence::fromString(config.screenshotShortcut, QKeySequence::PortableText));
-    themeField_->setCurrentIndex(qMax(0, themeField_->findData(config.theme)));
-    opacityField_->setValue(config.opacity * 100.0);
+
+    if (QComboBox* themeCombo = themeField(); themeCombo != nullptr) {
+        themeCombo->setCurrentIndex(qMax(0, themeCombo->findData(config.theme)));
+    }
+    if (QDoubleSpinBox* opacitySpin = opacityField(); opacitySpin != nullptr) {
+        opacitySpin->setValue(config.opacity * 100.0);
+    }
+
     firstPromptField_->setPlainText(config.firstPrompt);
     launchAtLoginCheckBox_->setChecked(config.launchAtLogin);
 
     setPanelColor(QColor(config.panelColor));
     if (const QColor configuredTextColor(config.panelTextColor); configuredTextColor.isValid()) {
         setPanelTextColor(configuredTextColor);
-    } else {
-        restoreAutomaticTextColor();
+    } else if (appearanceSection_ != nullptr) {
+        appearanceSection_->restoreAutomaticTextColor();
     }
+
     if (const QColor configuredBorderColor(config.panelBorderColor); configuredBorderColor.isValid()) {
         setPanelBorderColor(configuredBorderColor);
-    } else {
-        restoreAutomaticBorderColor();
+    } else if (appearanceSection_ != nullptr) {
+        appearanceSection_->restoreAutomaticBorderColor();
     }
-    applyAppearance(themeField_->currentData().toString());
+
+    applyAppearance(themeField() != nullptr ? themeField()->currentData().toString() : QStringLiteral("dark"));
 
     connect(protocolSelector_,
             &QComboBox::currentIndexChanged,
             this,
             [this](int) { handleProtocolChanged(); });
-    connect(themeField_,
-            &QComboBox::currentIndexChanged,
-            this,
-            [this](int) {
-                applyAppearance(themeField_->currentData().toString());
-                if (!panelTextColorCustomized_) {
-                    restoreAutomaticTextColor();
-                } else if (!panelBorderColorCustomized_) {
-                    restoreAutomaticBorderColor();
-                }
-            });
-    connect(opacityField_,
-            &QDoubleSpinBox::valueChanged,
-            this,
-            [this](double) { refreshPreview(); });
-    connect(panelColorButton_, &QPushButton::clicked, this, &SettingsDialog::choosePanelColor);
-    connect(panelTextColorButton_, &QPushButton::clicked, this, &SettingsDialog::choosePanelTextColor);
-    connect(panelTextAutoButton_, &QPushButton::clicked, this, &SettingsDialog::restoreAutomaticTextColor);
-    connect(panelBorderColorButton_, &QPushButton::clicked, this, &SettingsDialog::choosePanelBorderColor);
-    connect(panelBorderAutoButton_, &QPushButton::clicked, this, &SettingsDialog::restoreAutomaticBorderColor);
+
+    if (QComboBox* themeCombo = themeField(); themeCombo != nullptr) {
+        connect(themeCombo,
+                &QComboBox::currentIndexChanged,
+                this,
+                [this](int) {
+                    applyAppearance(themeField() != nullptr
+                                        ? themeField()->currentData().toString()
+                                        : QStringLiteral("dark"));
+                    if (appearanceSection_ == nullptr) {
+                        return;
+                    }
+                    if (!appearanceSection_->isPanelTextColorCustomized()) {
+                        appearanceSection_->restoreAutomaticTextColor();
+                    } else if (!appearanceSection_->isPanelBorderColorCustomized()) {
+                        appearanceSection_->restoreAutomaticBorderColor();
+                    }
+                });
+    }
+
     connect(modelPopupButton_, &QToolButton::clicked, this, [this]() {
         if (modelField_ != nullptr) {
             modelField_->setFocus();
@@ -408,8 +321,59 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
             &QPushButton::clicked,
             this,
             &SettingsDialog::testImageUnderstandingRequested);
+
     refreshModelActionUi();
-    refreshPreview();
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->refreshPreview();
+    }
+}
+
+QComboBox* SettingsDialog::themeField() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->themeField() : nullptr;
+}
+
+QDoubleSpinBox* SettingsDialog::opacityField() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->opacityField() : nullptr;
+}
+
+QPushButton* SettingsDialog::panelColorButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->panelColorButton() : nullptr;
+}
+
+QPushButton* SettingsDialog::panelTextColorButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->panelTextColorButton() : nullptr;
+}
+
+QPushButton* SettingsDialog::panelTextAutoButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->panelTextAutoButton() : nullptr;
+}
+
+QPushButton* SettingsDialog::panelBorderColorButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->panelBorderColorButton() : nullptr;
+}
+
+QPushButton* SettingsDialog::panelBorderAutoButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->panelBorderAutoButton() : nullptr;
+}
+
+QFrame* SettingsDialog::previewSurface() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewSurface() : nullptr;
+}
+
+QLabel* SettingsDialog::previewTitleLabel() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewTitleLabel() : nullptr;
+}
+
+QTextBrowser* SettingsDialog::previewHistoryView() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewHistoryView() : nullptr;
+}
+
+QLineEdit* SettingsDialog::previewInputPreviewField() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewInputField() : nullptr;
+}
+
+QPushButton* SettingsDialog::previewSendButton() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewSendButton() : nullptr;
 }
 
 ProviderProfile SettingsDialog::currentProfile() const {
@@ -424,20 +388,31 @@ ProviderProfile SettingsDialog::currentProfile() const {
 AppConfig SettingsDialog::currentConfig() const {
     AppConfig config = initialConfig_;
     config.activeProfile = currentProfile();
+
     const QString aiShortcutText = aiShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
     const QString screenshotShortcutText =
         screenshotShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
+
     config.aiShortcut = aiShortcutText.isEmpty()
         ? QStringLiteral("Ctrl+Shift+A")
         : aiShortcutText;
     config.screenshotShortcut = screenshotShortcutText.isEmpty()
         ? QStringLiteral("Ctrl+Shift+S")
         : screenshotShortcutText;
-    config.theme = themeField_->currentData().toString();
-    config.opacity = opacityField_->value() / 100.0;
-    config.panelColor = serializeColor(panelColor_);
-    config.panelTextColor = panelTextColorCustomized_ ? serializeColor(panelTextColor_) : QString();
-    config.panelBorderColor = panelBorderColorCustomized_ ? serializeColor(panelBorderColor_) : QString();
+
+    config.theme = themeField() != nullptr ? themeField()->currentData().toString() : QStringLiteral("system");
+    config.opacity = opacityField() != nullptr ? opacityField()->value() / 100.0 : 1.0;
+
+    if (appearanceSection_ != nullptr) {
+        config.panelColor = serializeColor(appearanceSection_->panelColor());
+        config.panelTextColor = appearanceSection_->isPanelTextColorCustomized()
+            ? serializeColor(appearanceSection_->panelTextColor())
+            : QString();
+        config.panelBorderColor = appearanceSection_->isPanelBorderColorCustomized()
+            ? serializeColor(appearanceSection_->panelBorderColor())
+            : QString();
+    }
+
     config.launchAtLogin = launchAtLoginCheckBox_ != nullptr && launchAtLoginCheckBox_->isChecked();
     config.firstPrompt = firstPromptField_->toPlainText().trimmed();
     return config;
@@ -446,8 +421,10 @@ AppConfig SettingsDialog::currentConfig() const {
 void SettingsDialog::applyAppearance(const QString& theme) {
     setStyleSheet(dialogStyleSheetForTheme(theme));
     applyImmersiveDarkTitleBar(this, effectiveThemeName(theme) == QStringLiteral("dark"));
-    refreshColorButtons();
-    refreshPreview();
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->refreshColorButtons();
+        appearanceSection_->refreshPreview();
+    }
 }
 
 void SettingsDialog::applyProtocolPreset(ProviderProtocol protocol) {
@@ -463,6 +440,7 @@ void SettingsDialog::applyProtocolPreset(ProviderProtocol protocol) {
     modelField_->addItem(preset.defaultModel);
     modelField_->setCurrentText(preset.defaultModel);
     modelField_->setToolTip(preset.modelHint);
+
     actionMode_ = ActionMode::None;
     if (modelActionStatusLabel_ != nullptr) {
         modelActionStatusLabel_->setText(QStringLiteral("协议已切换，可重新获取模型列表。"));
@@ -471,49 +449,21 @@ void SettingsDialog::applyProtocolPreset(ProviderProtocol protocol) {
 }
 
 void SettingsDialog::setPanelColor(const QColor& color) {
-    panelColor_ = color.isValid()
-        ? color
-        : fallbackSurfaceColor(themeField_ != nullptr ? themeField_->currentData().toString()
-                                                      : QStringLiteral("dark"));
-    if (!panelTextColorCustomized_) {
-        panelTextColor_ = autoTextColor(panelColor_,
-                                        themeField_ != nullptr ? themeField_->currentData().toString()
-                                                               : QStringLiteral("dark"));
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->setPanelColor(color);
     }
-    if (!panelBorderColorCustomized_) {
-        panelBorderColor_ = autoBorderColor(panelColor_,
-                                            themeField_ != nullptr ? themeField_->currentData().toString()
-                                                                   : QStringLiteral("dark"));
-    }
-    refreshColorButtons();
-    refreshPreview();
 }
 
 void SettingsDialog::setPanelTextColor(const QColor& color) {
-    panelTextColorCustomized_ = color.isValid();
-    panelTextColor_ = panelTextColorCustomized_
-        ? color
-        : autoTextColor(panelColor_,
-                        themeField_ != nullptr ? themeField_->currentData().toString()
-                                               : QStringLiteral("dark"));
-    if (!panelBorderColorCustomized_) {
-        panelBorderColor_ = autoBorderColor(panelColor_,
-                                            themeField_ != nullptr ? themeField_->currentData().toString()
-                                                                   : QStringLiteral("dark"));
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->setPanelTextColor(color);
     }
-    refreshColorButtons();
-    refreshPreview();
 }
 
 void SettingsDialog::setPanelBorderColor(const QColor& color) {
-    panelBorderColorCustomized_ = color.isValid();
-    panelBorderColor_ = panelBorderColorCustomized_
-        ? color
-        : autoBorderColor(panelColor_,
-                          themeField_ != nullptr ? themeField_->currentData().toString()
-                                                 : QStringLiteral("dark"));
-    refreshColorButtons();
-    refreshPreview();
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->setPanelBorderColor(color);
+    }
 }
 
 void SettingsDialog::setAvailableModels(const QStringList& models) {
@@ -572,13 +522,6 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
              static_cast<QWidget*>(modelPopupButton_),
              static_cast<QWidget*>(aiShortcutField_),
              static_cast<QWidget*>(screenshotShortcutField_),
-             static_cast<QWidget*>(themeField_),
-             static_cast<QWidget*>(opacityField_),
-             static_cast<QWidget*>(panelColorButton_),
-             static_cast<QWidget*>(panelTextColorButton_),
-             static_cast<QWidget*>(panelTextAutoButton_),
-             static_cast<QWidget*>(panelBorderColorButton_),
-             static_cast<QWidget*>(panelBorderAutoButton_),
              static_cast<QWidget*>(firstPromptField_),
              static_cast<QWidget*>(launchAtLoginCheckBox_),
              static_cast<QWidget*>(fetchModelsButton_),
@@ -590,225 +533,15 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
         }
     }
 
+    if (appearanceSection_ != nullptr) {
+        appearanceSection_->setBusy(busy);
+    }
+
     refreshModelActionUi();
 }
 
 void SettingsDialog::handleProtocolChanged() {
     applyProtocolPreset(protocolFromCombo(protocolSelector_));
-}
-
-void SettingsDialog::choosePanelColor() {
-    const QColor originalColor = panelColor_;
-    const QColor originalTextColor = panelTextColor_;
-    const bool originalCustomized = panelTextColorCustomized_;
-    const QColor originalBorderColor = panelBorderColor_;
-    const bool originalBorderCustomized = panelBorderColorCustomized_;
-
-    QColorDialog dialog(panelColor_, this);
-    dialog.setWindowTitle(QStringLiteral("选择聊天背景色"));
-    dialog.setOption(QColorDialog::ShowAlphaChannel, true);
-    dialog.setOption(QColorDialog::DontUseNativeDialog, true);
-    connect(&dialog, &QColorDialog::currentColorChanged, this,
-            [this](const QColor& current) {
-                if (current.isValid()) {
-                    setPanelColor(current);
-                }
-            });
-
-    if (dialog.exec() != QDialog::Accepted) {
-        panelColor_ = originalColor;
-        panelTextColor_ = originalTextColor;
-        panelTextColorCustomized_ = originalCustomized;
-        panelBorderColor_ = originalBorderColor;
-        panelBorderColorCustomized_ = originalBorderCustomized;
-        refreshColorButtons();
-        refreshPreview();
-        return;
-    }
-
-    setPanelColor(dialog.currentColor());
-}
-
-void SettingsDialog::choosePanelTextColor() {
-    const QColor originalTextColor = panelTextColor_;
-    const bool originalCustomized = panelTextColorCustomized_;
-    const QColor originalBorderColor = panelBorderColor_;
-    const bool originalBorderCustomized = panelBorderColorCustomized_;
-
-    QColorDialog dialog(panelTextColor_, this);
-    dialog.setWindowTitle(QStringLiteral("选择字体颜色"));
-    dialog.setOption(QColorDialog::ShowAlphaChannel, true);
-    dialog.setOption(QColorDialog::DontUseNativeDialog, true);
-    connect(&dialog, &QColorDialog::currentColorChanged, this,
-            [this](const QColor& current) {
-                if (current.isValid()) {
-                    setPanelTextColor(current);
-                }
-            });
-
-    if (dialog.exec() != QDialog::Accepted) {
-        panelTextColor_ = originalTextColor;
-        panelTextColorCustomized_ = originalCustomized;
-        panelBorderColor_ = originalBorderColor;
-        panelBorderColorCustomized_ = originalBorderCustomized;
-        refreshColorButtons();
-        refreshPreview();
-        return;
-    }
-
-    setPanelTextColor(dialog.currentColor());
-}
-
-void SettingsDialog::choosePanelBorderColor() {
-    const QColor originalBorderColor = panelBorderColor_;
-    const bool originalBorderCustomized = panelBorderColorCustomized_;
-
-    QColorDialog dialog(panelBorderColor_, this);
-    dialog.setWindowTitle(QStringLiteral("选择边框颜色"));
-    dialog.setOption(QColorDialog::ShowAlphaChannel, true);
-    dialog.setOption(QColorDialog::DontUseNativeDialog, true);
-    connect(&dialog, &QColorDialog::currentColorChanged, this,
-            [this](const QColor& current) {
-                if (current.isValid()) {
-                    setPanelBorderColor(current);
-                }
-            });
-
-    if (dialog.exec() != QDialog::Accepted) {
-        panelBorderColor_ = originalBorderColor;
-        panelBorderColorCustomized_ = originalBorderCustomized;
-        refreshColorButtons();
-        refreshPreview();
-        return;
-    }
-
-    setPanelBorderColor(dialog.currentColor());
-}
-
-void SettingsDialog::restoreAutomaticTextColor() {
-    panelTextColorCustomized_ = false;
-    panelTextColor_ = autoTextColor(panelColor_,
-                                    themeField_ != nullptr ? themeField_->currentData().toString()
-                                                           : QStringLiteral("dark"));
-    if (!panelBorderColorCustomized_) {
-        panelBorderColor_ = autoBorderColor(panelColor_,
-                                            themeField_ != nullptr ? themeField_->currentData().toString()
-                                                                   : QStringLiteral("dark"));
-    }
-    refreshColorButtons();
-    refreshPreview();
-}
-
-void SettingsDialog::restoreAutomaticBorderColor() {
-    panelBorderColorCustomized_ = false;
-    panelBorderColor_ = autoBorderColor(panelColor_,
-                                        themeField_ != nullptr ? themeField_->currentData().toString()
-                                                               : QStringLiteral("dark"));
-    refreshColorButtons();
-    refreshPreview();
-}
-
-void SettingsDialog::refreshColorButtons() {
-    const QString currentTheme = themeField_ != nullptr ? themeField_->currentData().toString()
-                                                        : QStringLiteral("dark");
-    if (panelColorButton_ != nullptr) {
-        const QColor buttonTextColor = autoTextColor(panelColor_, currentTheme);
-        panelColorButton_->setText(QStringLiteral("选择颜色  %1").arg(serializeColor(panelColor_).toUpper()));
-        panelColorButton_->setStyleSheet(colorButtonStyle(panelColor_, buttonTextColor, currentTheme));
-    }
-
-    if (panelTextColorButton_ != nullptr) {
-        const QString text = panelTextColorCustomized_
-            ? QStringLiteral("选择颜色  %1").arg(serializeColor(panelTextColor_).toUpper())
-            : QStringLiteral("自动（当前 %1）").arg(serializeColor(panelTextColor_).toUpper());
-        panelTextColorButton_->setText(text);
-        panelTextColorButton_->setStyleSheet(colorButtonStyle(panelColor_, panelTextColor_, currentTheme));
-    }
-
-    if (panelTextAutoButton_ != nullptr) {
-        if (!panelTextColorCustomized_) {
-            panelTextAutoButton_->setToolTip(QStringLiteral("当前已使用自动字体颜色"));
-        } else {
-            panelTextAutoButton_->setToolTip(QStringLiteral("恢复为自动计算的高对比字体色"));
-        }
-    }
-
-    if (panelBorderColorButton_ != nullptr) {
-        const QColor buttonTextColor = autoTextColor(panelBorderColor_, currentTheme);
-        const QString text = panelBorderColorCustomized_
-            ? QStringLiteral("选择颜色  %1").arg(serializeColor(panelBorderColor_).toUpper())
-            : QStringLiteral("自动（当前 %1）").arg(serializeColor(panelBorderColor_).toUpper());
-        panelBorderColorButton_->setText(text);
-        panelBorderColorButton_->setStyleSheet(
-            colorButtonStyle(panelBorderColor_, buttonTextColor, currentTheme));
-    }
-
-    if (panelBorderAutoButton_ != nullptr) {
-        if (!panelBorderColorCustomized_) {
-            panelBorderAutoButton_->setToolTip(QStringLiteral("当前已使用自动边框颜色"));
-        } else {
-            panelBorderAutoButton_->setToolTip(QStringLiteral("恢复为自动计算的边框颜色"));
-        }
-    }
-}
-
-void SettingsDialog::refreshPreview() {
-    if (previewSurface_ == nullptr || previewTitleLabel_ == nullptr || previewStatusLabel_ == nullptr ||
-        previewHistoryView_ == nullptr || previewInputField_ == nullptr || previewSendButton_ == nullptr ||
-        previewReasoningToggle_ == nullptr) {
-        return;
-    }
-
-    const double normalizedOpacity = opacityField_ != nullptr ? opacityField_->value() / 100.0 : 1.0;
-    QColor effectiveColor = panelColor_;
-    effectiveColor.setAlpha(qBound(0, qRound(panelColor_.alphaF() * normalizedOpacity * 255.0), 255));
-    const QString currentTheme = themeField_ != nullptr ? themeField_->currentData().toString()
-                                                        : QStringLiteral("dark");
-    const QColor borderColor = panelBorderColorCustomized_
-        ? panelBorderColor_
-        : autoBorderColor(panelColor_, currentTheme);
-    const QColor mutedColor = mutedTextColorForTheme(currentTheme);
-    const QString codeSurface = cssColor(panelColor_, qBound(0, effectiveColor.alpha() + 18, 255));
-    const QString chromeSurface = cssColor(panelColor_, qBound(0, effectiveColor.alpha() + 28, 255));
-    const QString previewBorderCss = effectiveThemeName(currentTheme) == QStringLiteral("dark")
-        ? cssColor(borderColor, qMin(borderColor.alpha(), 120))
-        : cssColor(borderColor);
-
-    previewSurface_->setProperty("previewColor", serializeColor(panelColor_));
-    previewSurface_->setProperty("previewBorderColor", serializeColor(borderColor));
-    previewSurface_->setProperty("previewOpacity", normalizedOpacity);
-    previewSurface_->setStyleSheet(QStringLiteral(
-        "QFrame#previewSurface { background-color: %1; border: 1px solid %2; border-radius: 18px; }")
-                                       .arg(effectiveColor.name(effectiveColor.alpha() < 255 ? QColor::HexArgb
-                                                                                            : QColor::HexRgb),
-                                            previewBorderCss));
-    previewTitleLabel_->setStyleSheet(QStringLiteral("font-weight: 700; color: %1;")
-                                          .arg(panelTextColor_.name(QColor::HexRgb)));
-    previewStatusLabel_->setStyleSheet(QStringLiteral("color: %1;")
-                                           .arg(mutedColor.name(QColor::HexRgb)));
-    previewReasoningToggle_->setStyleSheet(QStringLiteral("QToolButton { color: %1; border: none; padding: 0; background: transparent; }")
-                                               .arg(mutedColor.name(QColor::HexRgb)));
-    previewInputField_->setStyleSheet(QStringLiteral(
-        "QLineEdit { background: %1; color: %2; border: 1px solid %3; border-radius: 16px; padding: 7px 12px; }")
-                                          .arg(chromeSurface, panelTextColor_.name(QColor::HexRgb), previewBorderCss));
-    previewSendButton_->setStyleSheet(QStringLiteral(
-        "QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 16px; padding: 7px 12px; min-width: 56px; }")
-                                           .arg(chromeSurface, panelTextColor_.name(QColor::HexRgb), previewBorderCss));
-    previewHistoryView_->document()->setDefaultStyleSheet(
-        previewDocumentCss(panelTextColor_.name(QColor::HexRgb),
-                           mutedColor.name(QColor::HexRgb),
-                           codeSurface,
-                           chromeSurface,
-                           borderColor.name(QColor::HexRgb)));
-    previewHistoryView_->setHtml(previewDocumentHtml(
-        previewDocumentCss(panelTextColor_.name(QColor::HexRgb),
-                           mutedColor.name(QColor::HexRgb),
-                           codeSurface,
-                           chromeSurface,
-                           borderColor.name(QColor::HexRgb))));
-    previewHistoryView_->setStyleSheet(QStringLiteral(
-        "QTextBrowser { background: transparent; color: %1; border: none; }")
-                                           .arg(panelTextColor_.name(QColor::HexRgb)));
 }
 
 void SettingsDialog::refreshModelActionUi() {

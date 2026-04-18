@@ -37,6 +37,7 @@ private slots:
     void changingProtocolAppliesRecommendedBaseUrl();
     void busySettingsDialogDisablesTestButtons();
     void settingsDialogBusyStateLocksAllEditableControls();
+    void settingsDialogBusyStateLocksAppearanceControls();
     void settingsDialogAllowsEditingFirstPrompt();
     void settingsDialogShortcutFieldsCapturePressedKeys();
     void settingsDialogAllowsChoosingPanelAndTextColors();
@@ -159,6 +160,38 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(dialog.panelBorderColorButton()->isEnabled());
     QVERIFY(dialog.panelBorderAutoButton()->isEnabled());
     QVERIFY(dialog.firstPromptField()->isEnabled());
+}
+
+void UiWidgetTests::settingsDialogBusyStateLocksAppearanceControls() {
+    SettingsDialog dialog(AppConfig{});
+
+    QVERIFY(dialog.themeField()->isEnabled());
+    QVERIFY(dialog.opacityField()->isEnabled());
+    QVERIFY(dialog.panelColorButton()->isEnabled());
+    QVERIFY(dialog.panelTextColorButton()->isEnabled());
+    QVERIFY(dialog.panelTextAutoButton()->isEnabled());
+    QVERIFY(dialog.panelBorderColorButton()->isEnabled());
+    QVERIFY(dialog.panelBorderAutoButton()->isEnabled());
+
+    dialog.setBusy(true, QStringLiteral("Busy"));
+
+    QVERIFY(!dialog.themeField()->isEnabled());
+    QVERIFY(!dialog.opacityField()->isEnabled());
+    QVERIFY(!dialog.panelColorButton()->isEnabled());
+    QVERIFY(!dialog.panelTextColorButton()->isEnabled());
+    QVERIFY(!dialog.panelTextAutoButton()->isEnabled());
+    QVERIFY(!dialog.panelBorderColorButton()->isEnabled());
+    QVERIFY(!dialog.panelBorderAutoButton()->isEnabled());
+
+    dialog.setBusy(false, QStringLiteral("Ready"));
+
+    QVERIFY(dialog.themeField()->isEnabled());
+    QVERIFY(dialog.opacityField()->isEnabled());
+    QVERIFY(dialog.panelColorButton()->isEnabled());
+    QVERIFY(dialog.panelTextColorButton()->isEnabled());
+    QVERIFY(dialog.panelTextAutoButton()->isEnabled());
+    QVERIFY(dialog.panelBorderColorButton()->isEnabled());
+    QVERIFY(dialog.panelBorderAutoButton()->isEnabled());
 }
 
 void UiWidgetTests::settingsDialogAllowsEditingFirstPrompt() {

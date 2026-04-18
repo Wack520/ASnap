@@ -1,10 +1,10 @@
 #pragma once
 
-#include <QComboBox>
 #include <QCheckBox>
+#include <QColor>
+#include <QComboBox>
 #include <QDialog>
 #include <QDoubleSpinBox>
-#include <QColor>
 #include <QFrame>
 #include <QKeySequenceEdit>
 #include <QLabel>
@@ -19,6 +19,8 @@
 #include "config/provider_protocol.h"
 
 namespace ais::ui {
+
+class SettingsDialogAppearanceSection;
 
 class SettingsDialog final : public QDialog {
     Q_OBJECT
@@ -53,18 +55,18 @@ public:
     [[nodiscard]] QPushButton* fetchModelsButton() const noexcept { return fetchModelsButton_; }
     [[nodiscard]] QKeySequenceEdit* aiShortcutField() const noexcept { return aiShortcutField_; }
     [[nodiscard]] QKeySequenceEdit* screenshotShortcutField() const noexcept { return screenshotShortcutField_; }
-    [[nodiscard]] QComboBox* themeField() const noexcept { return themeField_; }
-    [[nodiscard]] QDoubleSpinBox* opacityField() const noexcept { return opacityField_; }
-    [[nodiscard]] QPushButton* panelColorButton() const noexcept { return panelColorButton_; }
-    [[nodiscard]] QPushButton* panelTextColorButton() const noexcept { return panelTextColorButton_; }
-    [[nodiscard]] QPushButton* panelTextAutoButton() const noexcept { return panelTextAutoButton_; }
-    [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept { return panelBorderColorButton_; }
-    [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept { return panelBorderAutoButton_; }
-    [[nodiscard]] QFrame* previewSurface() const noexcept { return previewSurface_; }
-    [[nodiscard]] QLabel* previewTitleLabel() const noexcept { return previewTitleLabel_; }
-    [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept { return previewHistoryView_; }
-    [[nodiscard]] QLineEdit* previewInputPreviewField() const noexcept { return previewInputField_; }
-    [[nodiscard]] QPushButton* previewSendButton() const noexcept { return previewSendButton_; }
+    [[nodiscard]] QComboBox* themeField() const noexcept;
+    [[nodiscard]] QDoubleSpinBox* opacityField() const noexcept;
+    [[nodiscard]] QPushButton* panelColorButton() const noexcept;
+    [[nodiscard]] QPushButton* panelTextColorButton() const noexcept;
+    [[nodiscard]] QPushButton* panelTextAutoButton() const noexcept;
+    [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept;
+    [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept;
+    [[nodiscard]] QFrame* previewSurface() const noexcept;
+    [[nodiscard]] QLabel* previewTitleLabel() const noexcept;
+    [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept;
+    [[nodiscard]] QLineEdit* previewInputPreviewField() const noexcept;
+    [[nodiscard]] QPushButton* previewSendButton() const noexcept;
     [[nodiscard]] QPlainTextEdit* firstPromptField() const noexcept { return firstPromptField_; }
     [[nodiscard]] QCheckBox* launchAtLoginCheckBox() const noexcept { return launchAtLoginCheckBox_; }
     [[nodiscard]] QPushButton* testConnectionButton() const noexcept { return testConnectionButton_; }
@@ -80,13 +82,6 @@ signals:
 
 private:
     void handleProtocolChanged();
-    void choosePanelColor();
-    void choosePanelTextColor();
-    void choosePanelBorderColor();
-    void restoreAutomaticTextColor();
-    void restoreAutomaticBorderColor();
-    void refreshColorButtons();
-    void refreshPreview();
     void refreshModelActionUi();
     [[nodiscard]] int indexForProtocol(ais::config::ProviderProtocol protocol) const;
 
@@ -104,29 +99,11 @@ private:
     QLabel* modelActionStatusLabel_ = nullptr;
     QKeySequenceEdit* aiShortcutField_ = nullptr;
     QKeySequenceEdit* screenshotShortcutField_ = nullptr;
-    QComboBox* themeField_ = nullptr;
-    QDoubleSpinBox* opacityField_ = nullptr;
-    QPushButton* panelColorButton_ = nullptr;
-    QPushButton* panelTextColorButton_ = nullptr;
-    QPushButton* panelTextAutoButton_ = nullptr;
-    QPushButton* panelBorderColorButton_ = nullptr;
-    QPushButton* panelBorderAutoButton_ = nullptr;
-    QFrame* previewSurface_ = nullptr;
-    QLabel* previewTitleLabel_ = nullptr;
-    QLabel* previewStatusLabel_ = nullptr;
-    QToolButton* previewReasoningToggle_ = nullptr;
-    QTextBrowser* previewHistoryView_ = nullptr;
-    QLineEdit* previewInputField_ = nullptr;
-    QPushButton* previewSendButton_ = nullptr;
+    SettingsDialogAppearanceSection* appearanceSection_ = nullptr;
     QPlainTextEdit* firstPromptField_ = nullptr;
     QCheckBox* launchAtLoginCheckBox_ = nullptr;
     QPushButton* testConnectionButton_ = nullptr;
     QPushButton* testImageButton_ = nullptr;
-    QColor panelColor_;
-    QColor panelTextColor_;
-    bool panelTextColorCustomized_ = false;
-    QColor panelBorderColor_;
-    bool panelBorderColorCustomized_ = false;
 };
 
 }  // namespace ais::ui

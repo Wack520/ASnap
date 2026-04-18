@@ -65,6 +65,8 @@ add_library(ai_screenshot_core STATIC
     src/ui/settings/settingsdialog.cpp
     src/ui/settings/settingsdialog_appearance_helpers.cpp
     src/ui/settings/settingsdialog_appearance_helpers.h
+    src/ui/settings/settingsdialog_appearance_section.cpp
+    src/ui/settings/settingsdialog_appearance_section.h
     src/ui/settings/settingsdialog.h
     resources/branding.qrc
 )
