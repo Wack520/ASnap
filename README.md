@@ -18,28 +18,15 @@ Windows 桌面 AI 截图助手。
   </a>
 </p>
 
-<p>
-  <img src="./docs/media/hero.png" alt="ASnap Hero" width="100%" />
-</p>
+## 项目概览
 
-## Demo
+ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 
-<p>
-  <img src="./docs/media/demo.gif" alt="ASnap demo" width="100%" />
-</p>
-
-<table>
-  <tr>
-    <td width="33.33%"><img src="./docs/media/capture.png" alt="Capture flow" /></td>
-    <td width="33.33%"><img src="./docs/media/chat.png" alt="Floating chat panel" /></td>
-    <td width="33.33%"><img src="./docs/media/settings.png" alt="Settings dialog" /></td>
-  </tr>
-  <tr>
-    <td><sub>冻结屏幕后自由框选</sub></td>
-    <td><sub>截图旁继续对话</sub></td>
-    <td><sub>Provider / 模型 / 外观 / 快捷键</sub></td>
-  </tr>
-</table>
+- 先冻结屏幕，再自由框选
+- 截图后直接在浮窗里追问
+- 支持 Markdown、代码块、表格和链接
+- 兼容 OpenAI、OpenAI Responses、OpenAI-compatible、Gemini、Claude
+- 提供文本连接、图片理解、快捷键和外观设置
 
 ## 它能做什么
 
