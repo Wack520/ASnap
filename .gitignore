@@ -37,6 +37,7 @@ __pycache__/
 .vscode/
 .vs/
 .omx/
+.worktrees/
 
 # OS junk
 .DS_Store
