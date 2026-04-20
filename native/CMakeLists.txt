@@ -34,6 +34,8 @@ add_library(ai_screenshot_core STATIC
     src/capture/desktop_capture_service.cpp
     src/capture/desktop_capture_service.h
     src/capture/desktop_snapshot.h
+    src/capture/frame_normalizer.cpp
+    src/capture/frame_normalizer.h
     src/chat/chat_message.h
     src/chat/chat_session.cpp
     src/chat/chat_session.h
