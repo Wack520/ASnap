@@ -4,6 +4,8 @@
 #include <QPixmap>
 #include <QRect>
 
+#include "capture/capture_pipeline_types.h"
+
 namespace ais::capture {
 
 struct ScreenMapping {
@@ -17,6 +19,7 @@ struct DesktopSnapshot {
     QRect overlayGeometry;
     QRect virtualGeometry;
     QList<ScreenMapping> screenMappings;
+    CaptureDiagnostics diagnostics;
 };
 
 }  // namespace ais::capture

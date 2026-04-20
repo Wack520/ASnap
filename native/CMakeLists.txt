@@ -29,6 +29,7 @@ add_library(ai_screenshot_core STATIC
     src/app/application_controller.h
     src/capture/capture_overlay.cpp
     src/capture/capture_overlay.h
+    src/capture/capture_pipeline_types.h
     src/capture/capture_selection.h
     src/capture/desktop_capture_service.cpp
     src/capture/desktop_capture_service.h
