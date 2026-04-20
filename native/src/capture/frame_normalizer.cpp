@@ -282,6 +282,14 @@ void applyHdrToneMapping(QImage* linearImage, const LinearImageStats& stats) {
     };
 }
 
+[[nodiscard]] QImage imageWithFrameColorSpace(const RawScreenFrame& frame) {
+    QImage image = frame.image;
+    if (frame.colorSpace.isValid()) {
+        image.setColorSpace(frame.colorSpace);
+    }
+    return image;
+}
+
 }  // namespace
 
 QImage FrameNormalizer::normalizeToSdr(const QImage& image) {
@@ -289,11 +297,7 @@ QImage FrameNormalizer::normalizeToSdr(const QImage& image) {
 }
 
 PreparedScreenFrame FrameNormalizer::normalizeFrame(const RawScreenFrame& frame) {
-    QImage image = frame.image;
-    if (frame.colorSpace.isValid()) {
-        image.setColorSpace(frame.colorSpace);
-    }
-
+    const QImage image = imageWithFrameColorSpace(frame);
     const NormalizedFrame normalized = normalizeToSdrInternal(image, frame.isHdrLike);
     return {
         .display = frame.display,

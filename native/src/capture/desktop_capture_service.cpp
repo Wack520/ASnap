@@ -22,81 +22,19 @@ namespace {
     return name;
 }
 
-[[nodiscard]] bool isHdrLikeImageFormat(const QImage& image) {
-    switch (image.format()) {
-    case QImage::Format_RGBX16FPx4:
-    case QImage::Format_RGBA16FPx4:
-    case QImage::Format_RGBA16FPx4_Premultiplied:
-    case QImage::Format_RGBX32FPx4:
-    case QImage::Format_RGBA32FPx4:
-    case QImage::Format_RGBA32FPx4_Premultiplied:
-        return true;
-    default:
-        return false;
-    }
-}
-
-void markToneMappedDiagnostics(const QList<PreparedScreenFrame>& preparedFrames,
-                               CaptureDiagnostics* diagnostics) {
-    if (diagnostics == nullptr || diagnostics->entries.isEmpty()) {
+void markToneMappedDiagnostic(const PreparedScreenFrame& preparedFrame,
+                              CaptureDiagnostics* diagnostics) {
+    if (diagnostics == nullptr || diagnostics->entries.isEmpty() || !preparedFrame.hdrToneMapped) {
         return;
     }
 
-    for (const PreparedScreenFrame& frame : preparedFrames) {
-        if (!frame.hdrToneMapped) {
-            continue;
-        }
-
-        for (CaptureDiagnosticsEntry& entry : diagnostics->entries) {
-            if (normalizedScreenName(entry.deviceName) ==
-                normalizedScreenName(frame.display.deviceName)) {
-                entry.hdrToneMapped = true;
-                break;
-            }
+    for (CaptureDiagnosticsEntry& entry : diagnostics->entries) {
+        if (normalizedScreenName(entry.deviceName) ==
+            normalizedScreenName(preparedFrame.display.deviceName)) {
+            entry.hdrToneMapped = true;
+            break;
         }
     }
-}
-
-[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromCaptured(
-    const QList<CapturedScreenFrame>& frames) {
-    QList<PreparedScreenFrame> prepared;
-    prepared.reserve(frames.size());
-
-    for (const CapturedScreenFrame& frame : frames) {
-        prepared.append(PreparedScreenFrame{
-            .display = DisplayDescriptor{
-                .monitorRect = frame.overlayGeometry,
-                .virtualRect = frame.virtualGeometry.isValid() ? frame.virtualGeometry
-                                                               : frame.overlayGeometry,
-                .devicePixelRatio = frame.devicePixelRatio,
-            },
-            .normalizedImage = frame.image,
-        });
-    }
-
-    return prepared;
-}
-
-[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromRaw(
-    const QList<RawScreenFrame>& frames) {
-    QList<PreparedScreenFrame> prepared;
-    prepared.reserve(frames.size());
-
-    for (const RawScreenFrame& frame : frames) {
-        if (frame.image.isNull()) {
-            continue;
-        }
-
-        const bool hdrToneMapped = frame.isHdrLike || isHdrLikeImageFormat(frame.image);
-        prepared.append(PreparedScreenFrame{
-            .display = frame.display,
-            .normalizedImage = DesktopCaptureService::normalizeForSdr(frame.image),
-            .backendKind = frame.backendKind,
-            .hdrToneMapped = hdrToneMapped,
-        });
-    }
-
-    return prepared;
 }
 
 }  // namespace
@@ -115,21 +53,19 @@ DesktopSnapshot DesktopCaptureService::captureVirtualDesktop() const {
         return {};
     }
 
-    CaptureDiagnostics diagnostics;
     const QList<DisplayDescriptor> displays = topology_->enumerateDisplays();
+    CaptureDiagnostics diagnostics;
     const QList<RawScreenFrame> rawFrames = backend_->captureDisplays(displays, &diagnostics);
-    QList<PreparedScreenFrame> preparedFrames = preparedFramesFromRaw(rawFrames);
-    markToneMappedDiagnostics(preparedFrames, &diagnostics);
+
+    QList<PreparedScreenFrame> preparedFrames;
+    preparedFrames.reserve(rawFrames.size());
+    for (const RawScreenFrame& frame : rawFrames) {
+        const PreparedScreenFrame preparedFrame = FrameNormalizer::normalizeFrame(frame);
+        markToneMappedDiagnostic(preparedFrame, &diagnostics);
+        preparedFrames.append(preparedFrame);
+    }
+
     return SnapshotComposer::composeFrames(preparedFrames, diagnostics);
-}
-
-DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenFrame>& frames) {
-    const QList<PreparedScreenFrame> prepared = preparedFramesFromCaptured(frames);
-    return SnapshotComposer::composeFrames(prepared);
-}
-
-QImage DesktopCaptureService::normalizeForSdr(const QImage& image) {
-    return FrameNormalizer::normalizeToSdr(image);
 }
 
 QRect DesktopCaptureService::translateToVirtual(const QRect& localRect,

@@ -1,3 +1,4 @@
+#include <cmath>
 #include <QColor>
 #include <QColorSpace>
 #include <QImage>
@@ -45,6 +46,26 @@ public:
     QList<ais::capture::CaptureDiagnosticsEntry> diagnosticEntries;
 };
 
+[[nodiscard]] ais::capture::RawScreenFrame makeHdrLikeRawFrame(
+    const ais::capture::DisplayDescriptor& display) {
+    QImage hdrLike(display.monitorRect.size(), QImage::Format_ARGB32_Premultiplied);
+    hdrLike.fill(QColor(255, 255, 255));
+
+    for (int y = 8; y < 24; ++y) {
+        for (int x = 8; x < 24; ++x) {
+            hdrLike.setPixelColor(x, y, QColor(56, 56, 56));
+        }
+    }
+
+    return ais::capture::RawScreenFrame{
+        .display = display,
+        .image = hdrLike,
+        .backendKind = ais::capture::CaptureBackendKind::WgcBgra8,
+        .colorSpace = QColorSpace(QColorSpace::SRgbLinear),
+        .isHdrLike = true,
+    };
+}
+
 }  // namespace
 
 class CapturePipelineTests final : public QObject {
@@ -63,6 +84,7 @@ private slots:
     void composeFramesUseOverlayGeometryWithoutMixedDpiGap();
     void composeFramesSkipsEmptyRemoteFrames();
     void desktopCaptureServiceUsesInjectedTopologyAndBackend();
+    void desktopCaptureServiceNormalizesEachRawFrameExactlyOnce();
 };
 
 void CapturePipelineTests::capturePipelineTypesExposeStableDefaults() {
@@ -452,6 +474,69 @@ void CapturePipelineTests::desktopCaptureServiceUsesInjectedTopologyAndBackend()
     const QImage rendered = snapshot.displayImage.toImage();
     QVERIFY(rendered.pixelColor(20, 20).red() > 200);
     QVERIFY(rendered.pixelColor(80, 20).green() > 150);
+}
+
+void CapturePipelineTests::desktopCaptureServiceNormalizesEachRawFrameExactlyOnce() {
+    using namespace ais::capture;
+
+    auto fakeTopology = std::make_unique<FakeDisplayTopology>();
+    fakeTopology->displays = {
+        DisplayDescriptor{
+            .deviceName = QStringLiteral(R"(\\.\DISPLAYHDR)"),
+            .monitorRect = QRect(0, 0, 32, 32),
+            .virtualRect = QRect(0, 0, 32, 32),
+            .devicePixelRatio = 1.0,
+            .isPrimary = true,
+        },
+    };
+    FakeDisplayTopology* topology = fakeTopology.get();
+
+    auto fakeBackend = std::make_unique<FakeScreenCaptureBackend>();
+    const RawScreenFrame rawFrame = makeHdrLikeRawFrame(topology->displays.constFirst());
+    const PreparedScreenFrame expected = FrameNormalizer::normalizeFrame(rawFrame);
+    fakeBackend->frames = {rawFrame};
+    fakeBackend->diagnosticEntries = {
+        CaptureDiagnosticsEntry{
+            .deviceName = topology->displays.constFirst().deviceName,
+            .backendKind = CaptureBackendKind::WgcBgra8,
+            .hdrToneMapped = false,
+            .fellBack = false,
+            .note = QStringLiteral("fake-hdr"),
+        },
+    };
+
+    DesktopCaptureService service(std::move(fakeTopology), std::move(fakeBackend));
+
+    const DesktopSnapshot snapshot = service.captureVirtualDesktop();
+    const DesktopSnapshot perScreenSnapshot =
+        SnapshotComposer::snapshotForScreen(snapshot, snapshot.screenMappings.constFirst());
+    const QImage composedImage = snapshot.captureImage.toImage();
+    const QImage croppedImage = perScreenSnapshot.captureImage.toImage();
+    const QColor expectedBright = expected.normalizedImage.pixelColor(2, 2);
+    const QColor expectedDark = expected.normalizedImage.pixelColor(12, 12);
+    const QColor composedBright = composedImage.pixelColor(2, 2);
+    const QColor croppedBright = croppedImage.pixelColor(2, 2);
+    const QColor croppedDark = croppedImage.pixelColor(12, 12);
+
+    QCOMPARE(snapshot.diagnostics.entries.size(), 1);
+    QCOMPARE(snapshot.diagnostics.entries.constFirst().deviceName,
+             topology->displays.constFirst().deviceName);
+    QVERIFY(composedImage.colorSpace().isValid());
+    QCOMPARE(composedImage.colorSpace(), QColorSpace(QColorSpace::SRgb));
+    QVERIFY(croppedImage.colorSpace().isValid());
+    QCOMPARE(croppedImage.colorSpace(), QColorSpace(QColorSpace::SRgb));
+    QVERIFY2(std::abs(composedBright.red() - expectedBright.red()) <= 3,
+             qPrintable(QStringLiteral("expected single normalization in composed image, expected=%1 actual=%2")
+                            .arg(expectedBright.red())
+                            .arg(composedBright.red())));
+    QVERIFY2(std::abs(croppedBright.red() - expectedBright.red()) <= 3,
+             qPrintable(QStringLiteral("expected cropped image to avoid second normalization, expected=%1 actual=%2")
+                            .arg(expectedBright.red())
+                            .arg(croppedBright.red())));
+    QVERIFY2(std::abs(croppedDark.red() - expectedDark.red()) <= 3,
+             qPrintable(QStringLiteral("expected dark region to survive crop without washout, expected=%1 actual=%2")
+                            .arg(expectedDark.red())
+                            .arg(croppedDark.red())));
 }
 
 QTEST_MAIN(CapturePipelineTests)

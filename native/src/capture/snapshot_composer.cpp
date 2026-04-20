@@ -4,8 +4,6 @@
 #include <QImage>
 #include <QPainter>
 
-#include "capture/frame_normalizer.h"
-
 namespace ais::capture {
 
 namespace {
@@ -174,8 +172,8 @@ QPixmap SnapshotComposer::copyLogicalSelection(const QPixmap& source,
                              qRound(logicalRect.width() * devicePixelRatio),
                              qRound(logicalRect.height() * devicePixelRatio));
 
-    QPixmap cropped = source.copy(physicalRect);
-    cropped = QPixmap::fromImage(FrameNormalizer::normalizeToSdr(cropped.toImage()));
+    const QImage sourceImage = source.toImage();
+    QPixmap cropped = QPixmap::fromImage(sourceImage.copy(physicalRect));
     cropped.setDevicePixelRatio(devicePixelRatio);
     return cropped;
 }
