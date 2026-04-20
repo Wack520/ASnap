@@ -1,28 +1,21 @@
 #pragma once
 
+#include <QList>
+#include <QPixmap>
 #include <QPoint>
 #include <QRect>
-#include <QImage>
-#include <QList>
 
+#include "capture/capture_pipeline_types.h"
 #include "capture/desktop_snapshot.h"
 
 namespace ais::capture {
 
-struct CapturedScreenFrame {
-    QImage image;
-    QRect overlayGeometry;
-    QRect virtualGeometry;
-    qreal devicePixelRatio = 1.0;
-};
-
-class DesktopCaptureService {
+class SnapshotComposer final {
 public:
-    [[nodiscard]] DesktopSnapshot captureVirtualDesktop() const;
-    // Compatibility wrappers around SnapshotComposer for existing callers.
-    [[nodiscard]] static DesktopSnapshot composeFrames(const QList<CapturedScreenFrame>& frames);
-    // Compatibility wrapper; FrameNormalizer owns HDR/SDR normalization behavior.
-    [[nodiscard]] static QImage normalizeForSdr(const QImage& image);
+    [[nodiscard]] static DesktopSnapshot composeFrames(const QList<PreparedScreenFrame>& frames,
+                                                       const CaptureDiagnostics& diagnostics = {});
+    [[nodiscard]] static DesktopSnapshot snapshotForScreen(const DesktopSnapshot& snapshot,
+                                                           const ScreenMapping& screenMapping);
     [[nodiscard]] static QRect translateToVirtual(const QRect& localRect,
                                                   const QPoint& virtualOrigin);
     [[nodiscard]] static QRect translateToVirtual(const DesktopSnapshot& snapshot,
