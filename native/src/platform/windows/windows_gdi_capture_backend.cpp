@@ -1,6 +1,4 @@
-#include "platform/windows/native_screen_capture.h"
-
-#include <memory>
+#include "platform/windows/windows_gdi_capture_backend.h"
 
 #include <QColorSpace>
 
@@ -29,7 +27,7 @@ private:
 
 class CompatibleDcHandle {
 public:
-    explicit CompatibleDcHandle(HDC source)
+    explicit CompatibleDcHandle(const HDC source)
         : handle_(source != nullptr ? CreateCompatibleDC(source) : nullptr) {}
 
     ~CompatibleDcHandle() {
@@ -46,7 +44,7 @@ private:
 
 class BitmapHandle {
 public:
-    explicit BitmapHandle(HBITMAP handle)
+    explicit BitmapHandle(const HBITMAP handle)
         : handle_(handle) {}
 
     ~BitmapHandle() {
@@ -61,12 +59,7 @@ private:
     HBITMAP handle_ = nullptr;
 };
 
-struct CaptureEnumContext {
-    HDC screenDc = nullptr;
-    QList<NativeScreenFrame>* frames = nullptr;
-};
-
-[[nodiscard]] QImage captureMonitorImage(HDC screenDc, const RECT& monitorRect) {
+[[nodiscard]] QImage captureMonitorImage(const HDC screenDc, const RECT& monitorRect) {
     if (screenDc == nullptr) {
         return {};
     }
@@ -127,52 +120,43 @@ struct CaptureEnumContext {
     return copy;
 }
 
-[[nodiscard]] BOOL CALLBACK captureMonitorProc(HMONITOR monitor,
-                                               HDC,
-                                               LPRECT,
-                                               LPARAM userData) {
-    auto* context = reinterpret_cast<CaptureEnumContext*>(userData);
-    if (context == nullptr || context->frames == nullptr || context->screenDc == nullptr) {
-        return TRUE;
+[[nodiscard]] std::optional<ais::capture::RawScreenFrame> captureMonitorWithGdi(
+    const HDC screenDc,
+    const ais::capture::DisplayDescriptor& display) {
+    if (!display.monitorRect.isValid()) {
+        return std::nullopt;
     }
 
-    MONITORINFOEXW monitorInfo{};
-    monitorInfo.cbSize = sizeof(MONITORINFOEXW);
-    if (!GetMonitorInfoW(monitor, &monitorInfo)) {
-        return TRUE;
-    }
-
-    const QImage image = captureMonitorImage(context->screenDc, monitorInfo.rcMonitor);
+    const RECT monitorRect{
+        .left = display.monitorRect.left(),
+        .top = display.monitorRect.top(),
+        .right = display.monitorRect.right(),
+        .bottom = display.monitorRect.bottom(),
+    };
+    const QImage image = captureMonitorImage(screenDc, monitorRect);
     if (image.isNull()) {
-        return TRUE;
+        return std::nullopt;
     }
 
-    context->frames->append(NativeScreenFrame{
-        .deviceName = QString::fromWCharArray(monitorInfo.szDevice),
+    return ais::capture::RawScreenFrame{
+        .display = display,
         .image = image,
-        .monitorRect = QRect(monitorInfo.rcMonitor.left,
-                             monitorInfo.rcMonitor.top,
-                             monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
-                             monitorInfo.rcMonitor.bottom - monitorInfo.rcMonitor.top),
-    });
-    return TRUE;
+        .backendKind = ais::capture::CaptureBackendKind::Gdi,
+        .colorSpace = image.colorSpace(),
+        .isHdrLike = false,
+    };
 }
 
 }  // namespace
 
-QList<NativeScreenFrame> captureNativeScreens() {
+std::optional<ais::capture::RawScreenFrame> captureDisplayWithGdi(
+    const ais::capture::DisplayDescriptor& display) {
     ScreenDcHandle screenDc;
     if (screenDc.get() == nullptr) {
-        return {};
+        return std::nullopt;
     }
 
-    QList<NativeScreenFrame> frames;
-    CaptureEnumContext context{
-        .screenDc = screenDc.get(),
-        .frames = &frames,
-    };
-    EnumDisplayMonitors(nullptr, nullptr, &captureMonitorProc, reinterpret_cast<LPARAM>(&context));
-    return frames;
+    return captureMonitorWithGdi(screenDc.get(), display);
 }
 
 }  // namespace ais::platform::windows

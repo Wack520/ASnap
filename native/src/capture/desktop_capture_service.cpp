@@ -2,13 +2,9 @@
 
 #include <memory>
 
-#include <QGuiApplication>
-#include <QHash>
-#include <QScreen>
-
 #include "capture/frame_normalizer.h"
 #include "capture/snapshot_composer.h"
-#include "platform/windows/native_screen_capture.h"
+#include "platform/windows/windows_capture_backend.h"
 #include "platform/windows/windows_display_topology.h"
 
 namespace ais::capture {
@@ -40,25 +36,6 @@ namespace {
     }
 }
 
-void appendDiagnostic(CaptureDiagnostics* diagnostics,
-                      const DisplayDescriptor& display,
-                      CaptureBackendKind backendKind,
-                      bool fellBack,
-                      QString note,
-                      bool hdrToneMapped = false) {
-    if (diagnostics == nullptr) {
-        return;
-    }
-
-    diagnostics->entries.append(CaptureDiagnosticsEntry{
-        .deviceName = display.deviceName,
-        .backendKind = backendKind,
-        .hdrToneMapped = hdrToneMapped,
-        .fellBack = fellBack,
-        .note = std::move(note),
-    });
-}
-
 void markToneMappedDiagnostics(const QList<PreparedScreenFrame>& preparedFrames,
                                CaptureDiagnostics* diagnostics) {
     if (diagnostics == nullptr || diagnostics->entries.isEmpty()) {
@@ -80,107 +57,8 @@ void markToneMappedDiagnostics(const QList<PreparedScreenFrame>& preparedFrames,
     }
 }
 
-class NativeScreenCaptureBackend final : public ScreenCaptureBackend {
-public:
-    [[nodiscard]] QList<RawScreenFrame> captureDisplays(
-        const QList<DisplayDescriptor>& displays,
-        CaptureDiagnostics* diagnostics) const override {
-        if (diagnostics != nullptr) {
-            diagnostics->entries.clear();
-        }
-
-        const QList<platform::windows::NativeScreenFrame> nativeScreens =
-            platform::windows::captureNativeScreens();
-        QHash<QString, platform::windows::NativeScreenFrame> nativeScreensByName;
-        nativeScreensByName.reserve(nativeScreens.size());
-        for (const auto& nativeScreen : nativeScreens) {
-            if (!nativeScreen.image.isNull()) {
-                nativeScreensByName.insert(normalizedScreenName(nativeScreen.deviceName),
-                                           nativeScreen);
-            }
-        }
-
-        const QList<QScreen*> qtScreens = QGuiApplication::screens();
-        QHash<QString, QScreen*> qtScreensByName;
-        qtScreensByName.reserve(qtScreens.size());
-        for (QScreen* screen : qtScreens) {
-            if (screen != nullptr) {
-                qtScreensByName.insert(normalizedScreenName(screen->name()), screen);
-            }
-        }
-
-        QList<RawScreenFrame> frames;
-        frames.reserve(displays.size());
-
-        for (const DisplayDescriptor& display : displays) {
-            const QString deviceKey = normalizedScreenName(display.deviceName);
-            const auto nativeScreen = nativeScreensByName.value(deviceKey);
-            if (!nativeScreen.image.isNull()) {
-                const QImage image = nativeScreen.image;
-                frames.append(RawScreenFrame{
-                    .display = display,
-                    .image = image,
-                    .backendKind = CaptureBackendKind::Gdi,
-                    .colorSpace = image.colorSpace(),
-                    .isHdrLike = isHdrLikeImageFormat(image),
-                });
-                appendDiagnostic(diagnostics,
-                                 display,
-                                 CaptureBackendKind::Gdi,
-                                 false,
-                                 QStringLiteral("native-gdi"));
-                continue;
-            }
-
-            QScreen* matchedScreen = qtScreensByName.value(deviceKey, nullptr);
-            if (matchedScreen == nullptr && display.virtualRect.isValid()) {
-                for (QScreen* screen : qtScreens) {
-                    if (screen != nullptr && screen->geometry() == display.virtualRect) {
-                        matchedScreen = screen;
-                        break;
-                    }
-                }
-            }
-
-            if (matchedScreen == nullptr) {
-                appendDiagnostic(diagnostics,
-                                 display,
-                                 CaptureBackendKind::Unknown,
-                                 true,
-                                 QStringLiteral("capture-unavailable"));
-                continue;
-            }
-
-            const QPixmap shot = matchedScreen->grabWindow(0);
-            if (shot.isNull() || shot.width() <= 0 || shot.height() <= 0) {
-                appendDiagnostic(diagnostics,
-                                 display,
-                                 CaptureBackendKind::Unknown,
-                                 true,
-                                 QStringLiteral("qt-grabwindow-empty"));
-                continue;
-            }
-
-            const QImage image = shot.toImage();
-            frames.append(RawScreenFrame{
-                .display = display,
-                .image = image,
-                .backendKind = CaptureBackendKind::Unknown,
-                .colorSpace = image.colorSpace(),
-                .isHdrLike = isHdrLikeImageFormat(image),
-            });
-            appendDiagnostic(diagnostics,
-                             display,
-                             CaptureBackendKind::Unknown,
-                             true,
-                             QStringLiteral("qt-grabwindow"));
-        }
-
-        return frames;
-    }
-};
-
-[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromCaptured(const QList<CapturedScreenFrame>& frames) {
+[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromCaptured(
+    const QList<CapturedScreenFrame>& frames) {
     QList<PreparedScreenFrame> prepared;
     prepared.reserve(frames.size());
 
@@ -199,7 +77,8 @@ public:
     return prepared;
 }
 
-[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromRaw(const QList<RawScreenFrame>& frames) {
+[[nodiscard]] QList<PreparedScreenFrame> preparedFramesFromRaw(
+    const QList<RawScreenFrame>& frames) {
     QList<PreparedScreenFrame> prepared;
     prepared.reserve(frames.size());
 
@@ -224,7 +103,7 @@ public:
 
 DesktopCaptureService::DesktopCaptureService()
     : DesktopCaptureService(std::make_unique<platform::windows::WindowsDisplayTopology>(),
-                            std::make_unique<NativeScreenCaptureBackend>()) {}
+                            std::make_unique<platform::windows::WindowsScreenCaptureBackend>()) {}
 
 DesktopCaptureService::DesktopCaptureService(std::unique_ptr<DisplayTopology> topology,
                                              std::unique_ptr<ScreenCaptureBackend> backend)
