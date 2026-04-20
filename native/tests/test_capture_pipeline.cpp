@@ -1,6 +1,8 @@
 #include <QColor>
 #include <QColorSpace>
 #include <QImage>
+#include <QList>
+#include <memory>
 #include <QPixmap>
 #include <QPoint>
 #include <QRect>
@@ -8,9 +10,42 @@
 #include <QTest>
 
 #include "capture/capture_pipeline_types.h"
+#include "capture/desktop_capture_service.h"
 #include "capture/desktop_snapshot.h"
+#include "capture/display_topology.h"
 #include "capture/frame_normalizer.h"
+#include "capture/screen_capture_backend.h"
 #include "capture/snapshot_composer.h"
+
+namespace {
+
+class FakeDisplayTopology final : public ais::capture::DisplayTopology {
+public:
+    [[nodiscard]] QList<ais::capture::DisplayDescriptor> enumerateDisplays() const override {
+        return displays;
+    }
+
+    QList<ais::capture::DisplayDescriptor> displays;
+};
+
+class FakeScreenCaptureBackend final : public ais::capture::ScreenCaptureBackend {
+public:
+    [[nodiscard]] QList<ais::capture::RawScreenFrame> captureDisplays(
+        const QList<ais::capture::DisplayDescriptor>& displays,
+        ais::capture::CaptureDiagnostics* diagnostics) const override {
+        requestedDisplays = displays;
+        if (diagnostics != nullptr) {
+            diagnostics->entries = diagnosticEntries;
+        }
+        return frames;
+    }
+
+    mutable QList<ais::capture::DisplayDescriptor> requestedDisplays;
+    QList<ais::capture::RawScreenFrame> frames;
+    QList<ais::capture::CaptureDiagnosticsEntry> diagnosticEntries;
+};
+
+}  // namespace
 
 class CapturePipelineTests final : public QObject {
     Q_OBJECT
@@ -27,6 +62,7 @@ private slots:
     void snapshotForScreenKeepsPhysicalPixelsAndLogicalOverlayGeometry();
     void composeFramesUseOverlayGeometryWithoutMixedDpiGap();
     void composeFramesSkipsEmptyRemoteFrames();
+    void desktopCaptureServiceUsesInjectedTopologyAndBackend();
 };
 
 void CapturePipelineTests::capturePipelineTypesExposeStableDefaults() {
@@ -323,6 +359,99 @@ void CapturePipelineTests::composeFramesSkipsEmptyRemoteFrames() {
     QCOMPARE(snapshot.virtualGeometry, QRect(0, 0, 160, 100));
     QCOMPARE(snapshot.overlayGeometry, QRect(0, 0, 160, 100));
     QCOMPARE(snapshot.displayImage.deviceIndependentSize().toSize(), QSize(160, 100));
+}
+
+void CapturePipelineTests::desktopCaptureServiceUsesInjectedTopologyAndBackend() {
+    using namespace ais::capture;
+
+    auto fakeTopology = std::make_unique<FakeDisplayTopology>();
+    fakeTopology->displays = {
+        DisplayDescriptor{
+            .deviceName = QStringLiteral("FAKE_DISPLAY_1"),
+            .monitorRect = QRect(0, 0, 60, 40),
+            .virtualRect = QRect(0, 0, 60, 40),
+            .devicePixelRatio = 1.0,
+            .isPrimary = true,
+        },
+        DisplayDescriptor{
+            .deviceName = QStringLiteral("FAKE_DISPLAY_2"),
+            .monitorRect = QRect(60, 0, 50, 40),
+            .virtualRect = QRect(60, 0, 50, 40),
+            .devicePixelRatio = 1.0,
+            .isPrimary = false,
+        },
+    };
+    FakeDisplayTopology* topology = fakeTopology.get();
+
+    auto fakeBackend = std::make_unique<FakeScreenCaptureBackend>();
+    QImage left(QSize(60, 40), QImage::Format_ARGB32_Premultiplied);
+    left.setColorSpace(QColorSpace(QColorSpace::SRgb));
+    left.fill(Qt::red);
+
+    QImage right(QSize(50, 40), QImage::Format_ARGB32_Premultiplied);
+    right.setColorSpace(QColorSpace(QColorSpace::SRgb));
+    right.fill(Qt::green);
+
+    fakeBackend->frames = {
+        RawScreenFrame{
+            .display = topology->displays.at(0),
+            .image = left,
+            .backendKind = CaptureBackendKind::Gdi,
+            .colorSpace = QColorSpace(QColorSpace::SRgb),
+            .isHdrLike = false,
+        },
+        RawScreenFrame{
+            .display = topology->displays.at(1),
+            .image = right,
+            .backendKind = CaptureBackendKind::WgcBgra8,
+            .colorSpace = QColorSpace(QColorSpace::SRgb),
+            .isHdrLike = false,
+        },
+    };
+    fakeBackend->diagnosticEntries = {
+        CaptureDiagnosticsEntry{
+            .deviceName = QStringLiteral("FAKE_DISPLAY_1"),
+            .backendKind = CaptureBackendKind::Gdi,
+            .hdrToneMapped = false,
+            .fellBack = false,
+            .note = QStringLiteral("fake-left"),
+        },
+        CaptureDiagnosticsEntry{
+            .deviceName = QStringLiteral("FAKE_DISPLAY_2"),
+            .backendKind = CaptureBackendKind::WgcBgra8,
+            .hdrToneMapped = false,
+            .fellBack = false,
+            .note = QStringLiteral("fake-right"),
+        },
+    };
+    FakeScreenCaptureBackend* backend = fakeBackend.get();
+
+    DesktopCaptureService service(std::move(fakeTopology), std::move(fakeBackend));
+
+    const DesktopSnapshot snapshot = service.captureVirtualDesktop();
+
+    QCOMPARE(backend->requestedDisplays.size(), topology->displays.size());
+    for (int index = 0; index < topology->displays.size(); ++index) {
+        const DisplayDescriptor& requested = backend->requestedDisplays.at(index);
+        const DisplayDescriptor& expected = topology->displays.at(index);
+        QCOMPARE(requested.deviceName, expected.deviceName);
+        QCOMPARE(requested.monitorRect, expected.monitorRect);
+        QCOMPARE(requested.virtualRect, expected.virtualRect);
+        QCOMPARE(requested.devicePixelRatio, expected.devicePixelRatio);
+        QCOMPARE(requested.isPrimary, expected.isPrimary);
+    }
+
+    QCOMPARE(snapshot.overlayGeometry, QRect(0, 0, 110, 40));
+    QCOMPARE(snapshot.virtualGeometry, QRect(0, 0, 110, 40));
+    QCOMPARE(snapshot.screenMappings.size(), 2);
+    QCOMPARE(snapshot.screenMappings.at(0).overlayRect, topology->displays.at(0).monitorRect);
+    QCOMPARE(snapshot.screenMappings.at(1).overlayRect, topology->displays.at(1).monitorRect);
+    QCOMPARE(snapshot.diagnostics.entries.size(), 2);
+    QCOMPARE(snapshot.diagnostics.entries.constFirst().deviceName, QStringLiteral("FAKE_DISPLAY_1"));
+
+    const QImage rendered = snapshot.displayImage.toImage();
+    QVERIFY(rendered.pixelColor(20, 20).red() > 200);
+    QVERIFY(rendered.pixelColor(80, 20).green() > 150);
 }
 
 QTEST_MAIN(CapturePipelineTests)

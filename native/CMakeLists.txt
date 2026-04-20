@@ -34,8 +34,10 @@ add_library(ai_screenshot_core STATIC
     src/capture/desktop_capture_service.cpp
     src/capture/desktop_capture_service.h
     src/capture/desktop_snapshot.h
+    src/capture/display_topology.h
     src/capture/frame_normalizer.cpp
     src/capture/frame_normalizer.h
+    src/capture/screen_capture_backend.h
     src/capture/snapshot_composer.cpp
     src/capture/snapshot_composer.h
     src/chat/chat_message.h
@@ -57,6 +59,8 @@ add_library(ai_screenshot_core STATIC
     src/platform/windows/native_screen_capture.h
     src/platform/windows/startup_registry.cpp
     src/platform/windows/startup_registry.h
+    src/platform/windows/windows_display_topology.cpp
+    src/platform/windows/windows_display_topology.h
     src/ui/icon_factory.cpp
     src/ui/icon_factory.h
     src/ui/chat/chat_markdown_renderer.cpp

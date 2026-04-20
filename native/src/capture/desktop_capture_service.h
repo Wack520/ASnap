@@ -1,11 +1,15 @@
 #pragma once
 
+#include <memory>
+
 #include <QPoint>
-#include <QRect>
 #include <QImage>
 #include <QList>
+#include <QRect>
 
 #include "capture/desktop_snapshot.h"
+#include "capture/display_topology.h"
+#include "capture/screen_capture_backend.h"
 
 namespace ais::capture {
 
@@ -18,6 +22,10 @@ struct CapturedScreenFrame {
 
 class DesktopCaptureService {
 public:
+    DesktopCaptureService();
+    DesktopCaptureService(std::unique_ptr<DisplayTopology> topology,
+                          std::unique_ptr<ScreenCaptureBackend> backend);
+
     [[nodiscard]] DesktopSnapshot captureVirtualDesktop() const;
     // Compatibility wrappers around SnapshotComposer for existing callers.
     [[nodiscard]] static DesktopSnapshot composeFrames(const QList<CapturedScreenFrame>& frames);
@@ -29,6 +37,10 @@ public:
                                                   const QRect& localRect);
     [[nodiscard]] static QPixmap copyLogicalSelection(const QPixmap& source,
                                                       const QRect& logicalRect);
+
+private:
+    std::unique_ptr<DisplayTopology> topology_;
+    std::unique_ptr<ScreenCaptureBackend> backend_;
 };
 
 }  // namespace ais::capture
