@@ -20,6 +20,7 @@
 #include "capture/desktop_snapshot.h"
 #include "platform/windows/hotkey_chord.h"
 #include "platform/windows/windows_capture_backend.h"
+#include "platform/windows/windows_gdi_capture_backend.h"
 #include "platform/windows/windows_graphics_capture_backend.h"
 
 using ais::capture::CaptureOverlay;
@@ -140,6 +141,8 @@ private slots:
     void bgraMappedTextureProducesArgb32Image();
     void halfFloatMappedTextureProducesLinearFp16Image();
     void shortMappedTextureRowPitchReturnsEmptyImage();
+    void gdiRectConversionUsesExclusiveRightBottom();
+    void wgcRectConversionUsesExclusiveRightBottom();
     void windowsCaptureBackendFallsBackToGdiWhenWgcFails();
     void windowsCaptureBackendCapturesEachDisplayOnceWithDiagnostics();
     void overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage();
@@ -216,6 +219,26 @@ void CaptureFlowTests::shortMappedTextureRowPitchReturnsEmptyImage() {
         rawPixels.data());
 
     QVERIFY(image.isNull());
+}
+
+void CaptureFlowTests::gdiRectConversionUsesExclusiveRightBottom() {
+    const RECT rect =
+        ais::platform::windows::detail::makeWinRectForGdiCapture(QRect(10, 20, 30, 40));
+
+    QCOMPARE(rect.left, 10L);
+    QCOMPARE(rect.top, 20L);
+    QCOMPARE(rect.right, 40L);
+    QCOMPARE(rect.bottom, 60L);
+}
+
+void CaptureFlowTests::wgcRectConversionUsesExclusiveRightBottom() {
+    const RECT rect = ais::platform::windows::detail::makeWinRectForWgcMonitorLookup(
+        QRect(10, 20, 30, 40));
+
+    QCOMPARE(rect.left, 10L);
+    QCOMPARE(rect.top, 20L);
+    QCOMPARE(rect.right, 40L);
+    QCOMPARE(rect.bottom, 60L);
 }
 
 void CaptureFlowTests::windowsCaptureBackendFallsBackToGdiWhenWgcFails() {

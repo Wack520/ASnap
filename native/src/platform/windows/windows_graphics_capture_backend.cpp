@@ -250,12 +250,7 @@ void setFailureNote(QString* failureNote, QString note) {
         return std::nullopt;
     }
 
-    const RECT rect{
-        .left = display.monitorRect.left(),
-        .top = display.monitorRect.top(),
-        .right = display.monitorRect.right(),
-        .bottom = display.monitorRect.bottom(),
-    };
+    const RECT rect = detail::makeWinRectForWgcMonitorLookup(display.monitorRect);
     HMONITOR monitor = MonitorFromRect(&rect, MONITOR_DEFAULTTONULL);
     if (monitor == nullptr) {
         setFailureNote(failureNote, QStringLiteral("WGC monitor lookup failed"));
@@ -462,6 +457,15 @@ void setFailureNote(QString* failureNote, QString note) {
 }  // namespace
 
 namespace detail {
+
+RECT makeWinRectForWgcMonitorLookup(const QRect& rect) {
+    return RECT{
+        .left = rect.left(),
+        .top = rect.top(),
+        .right = rect.x() + rect.width(),
+        .bottom = rect.y() + rect.height(),
+    };
+}
 
 QImage makeQImageFromMappedTexture(const MappedTextureFormat format,
                                    const QSize& size,

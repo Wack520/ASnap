@@ -2,8 +2,11 @@
 
 #include <optional>
 
+#include <QRect>
 #include <QSize>
 #include <QString>
+
+#include <windows.h>
 
 #include "capture/capture_pipeline_types.h"
 
@@ -20,6 +23,7 @@ enum class MappedTextureFormat {
                                                  const QSize& size,
                                                  qsizetype rowPitch,
                                                  const uchar* data);
+[[nodiscard]] RECT makeWinRectForWgcMonitorLookup(const QRect& rect);
 [[nodiscard]] std::optional<ais::capture::RawScreenFrame> captureDisplayWithWgc(
     const ais::capture::DisplayDescriptor& display,
     ais::capture::CaptureBackendKind preferredKind,

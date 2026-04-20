@@ -127,12 +127,7 @@ private:
         return std::nullopt;
     }
 
-    const RECT monitorRect{
-        .left = display.monitorRect.left(),
-        .top = display.monitorRect.top(),
-        .right = display.monitorRect.right(),
-        .bottom = display.monitorRect.bottom(),
-    };
+    const RECT monitorRect = detail::makeWinRectForGdiCapture(display.monitorRect);
     const QImage image = captureMonitorImage(screenDc, monitorRect);
     if (image.isNull()) {
         return std::nullopt;
@@ -148,6 +143,19 @@ private:
 }
 
 }  // namespace
+
+namespace detail {
+
+RECT makeWinRectForGdiCapture(const QRect& rect) {
+    return RECT{
+        .left = rect.left(),
+        .top = rect.top(),
+        .right = rect.x() + rect.width(),
+        .bottom = rect.y() + rect.height(),
+    };
+}
+
+}  // namespace detail
 
 std::optional<ais::capture::RawScreenFrame> captureDisplayWithGdi(
     const ais::capture::DisplayDescriptor& display) {
