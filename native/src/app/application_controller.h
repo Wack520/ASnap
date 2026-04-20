@@ -20,7 +20,6 @@ class ProviderTestRunner;
 }  // namespace ais::ai
 
 namespace ais::capture {
-class CaptureOverlay;
 struct CaptureSelection;
 class DesktopCaptureService;
 }  // namespace ais::capture
@@ -45,15 +44,12 @@ class SettingsDialog;
 
 namespace ais::app {
 
+class CaptureWorkflowController;
+
 class ApplicationController final : public QObject {
     Q_OBJECT
 
 public:
-    enum class CaptureLaunchMode {
-        AiAssistant,
-        PlainScreenshot,
-    };
-
     using RequestStreamStarter = std::function<bool(const config::ProviderProfile&,
                                                     const QList<chat::ChatMessage>&,
                                                     ai::AiClient::DeltaHandler,
@@ -92,8 +88,6 @@ private slots:
     void startCapture();
     void startPlainCapture();
     void openSettings();
-    void onCaptureConfirmed(const ais::capture::CaptureSelection& selection);
-    void onCaptureCancelled();
     void onFollowUpRequested(const QString& text);
     void onSettingsSaveRequested();
     void onSettingsFetchModelsRequested();
@@ -107,16 +101,15 @@ private:
     void ensureServiceOwnership();
     void ensureChatPanel();
     void ensureSettingsDialog();
+    void rebuildCaptureWorkflowController(
+        std::function<void(const capture::CaptureSelection&)> onConfirmed);
     void createTray();
     void loadConfig();
     void applyConfigDefaults();
     void applyAppearance();
     [[nodiscard]] bool registerHotkeys();
 
-    void clearOverlay();
     void cancelCurrentConversation(bool clearSession = true);
-    void startCaptureWorkflow(CaptureLaunchMode mode);
-    void handleConfirmedCapture(const ais::capture::CaptureSelection& selection);
     void handlePlainScreenshotCapture(const ais::capture::CaptureSelection& selection);
     void beginSessionFromSelection(const ais::capture::CaptureSelection& selection);
     [[nodiscard]] bool sendCurrentSessionRequest(
@@ -162,13 +155,12 @@ private:
     std::unique_ptr<platform::windows::StartupRegistry> startupRegistry_;
     ui::SettingsDialog* settingsDialog_ = nullptr;
     ui::FloatingChatPanel* chatPanel_ = nullptr;
-    capture::CaptureOverlay* overlay_ = nullptr;
+    std::unique_ptr<CaptureWorkflowController> captureWorkflowController_;
 
     bool initialized_ = false;
     QString lastStatusText_ = QStringLiteral("Ready");
     QStringList queuedFollowUpTexts_;
     RequestStreamStarter requestStreamStarter_;
-    CaptureLaunchMode activeCaptureMode_ = CaptureLaunchMode::AiAssistant;
     int emptyRetryDelayOverrideMs_ = -1;
 };
 

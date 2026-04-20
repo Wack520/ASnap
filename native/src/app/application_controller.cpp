@@ -21,7 +21,7 @@
 #include "ai/ai_client.h"
 #include "ai/provider_test_runner.h"
 #include "ai/qt_network_transport.h"
-#include "capture/capture_overlay.h"
+#include "app/capture_workflow_controller.h"
 #include "capture/capture_selection.h"
 #include "capture/desktop_capture_service.h"
 #include "chat/chat_session.h"
@@ -112,7 +112,7 @@ ApplicationController::ApplicationController(QObject* parent)
 ApplicationController::~ApplicationController() {
     rememberWindowSizes();
     (void)saveConfigSnapshot();
-    clearOverlay();
+    captureWorkflowController_.reset();
 
     if (aiHotkeyHost_ != nullptr) {
         aiHotkeyHost_->unregisterHotkey();
@@ -309,20 +309,17 @@ QString ApplicationController::lastAssistantReasoningForTest() const {
     return currentSession_ == nullptr ? QString() : currentSession_->latestAssistantReasoning();
 }
 
-void ApplicationController::confirmCaptureForTest(const capture::CaptureSelection& selection, const bool sendToAi) {
-    activeCaptureMode_ = sendToAi ? CaptureLaunchMode::AiAssistant : CaptureLaunchMode::PlainScreenshot;
-    handleConfirmedCapture(selection);
+void ApplicationController::confirmCaptureForTest(const capture::CaptureSelection& selection,
+                                                  const bool sendToAi) {
+    if (sendToAi) {
+        beginSessionFromSelection(selection);
+        return;
+    }
+
+    handlePlainScreenshotCapture(selection);
 }
 
 void ApplicationController::startCapture() {
-    startCaptureWorkflow(CaptureLaunchMode::AiAssistant);
-}
-
-void ApplicationController::startPlainCapture() {
-    startCaptureWorkflow(CaptureLaunchMode::PlainScreenshot);
-}
-
-void ApplicationController::startCaptureWorkflow(const CaptureLaunchMode mode) {
     if (guard_.state() == BusyState::TestingProvider || guard_.state() == BusyState::Capturing) {
         return;
     }
@@ -335,10 +332,36 @@ void ApplicationController::startCaptureWorkflow(const CaptureLaunchMode mode) {
         return;
     }
 
-    activeCaptureMode_ = mode;
-    syncBusyUi(mode == CaptureLaunchMode::AiAssistant
-                   ? QStringLiteral("Select an area to capture...")
-                   : QStringLiteral("选择截图区域…"));
+    if (chatPanel_ != nullptr) {
+        chatPanel_->hide();
+    }
+
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+    rebuildCaptureWorkflowController(
+        [this](const capture::CaptureSelection& selection) {
+            guard_.leave(BusyState::Capturing);
+            beginSessionFromSelection(selection);
+        });
+
+    if (!captureWorkflowController_->start(CaptureWorkflowController::LaunchMode::AiAssistant)) {
+        guard_.leave(BusyState::Capturing);
+        syncBusyUi(lastStatusText_);
+    }
+}
+
+void ApplicationController::startPlainCapture() {
+    if (guard_.state() == BusyState::TestingProvider || guard_.state() == BusyState::Capturing) {
+        return;
+    }
+
+    if (guard_.state() == BusyState::RequestInFlight) {
+        cancelCurrentConversation(false);
+    }
+
+    if (!guard_.tryEnter(BusyState::Capturing)) {
+        return;
+    }
 
     if (chatPanel_ != nullptr) {
         chatPanel_->hide();
@@ -346,31 +369,17 @@ void ApplicationController::startCaptureWorkflow(const CaptureLaunchMode mode) {
 
     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
-    if (captureService_ == nullptr) {
+    rebuildCaptureWorkflowController(
+        [this](const capture::CaptureSelection& selection) {
+            guard_.leave(BusyState::Capturing);
+            handlePlainScreenshotCapture(selection);
+        });
+
+    if (!captureWorkflowController_->start(
+            CaptureWorkflowController::LaunchMode::PlainScreenshot)) {
         guard_.leave(BusyState::Capturing);
-        syncBusyUi(QStringLiteral("Capture service is unavailable"));
-        return;
+        syncBusyUi(lastStatusText_);
     }
-
-    const capture::DesktopSnapshot snapshot = captureService_->captureVirtualDesktop();
-    if (snapshot.displayImage.isNull() || snapshot.captureImage.isNull() ||
-        !snapshot.virtualGeometry.isValid() || snapshot.virtualGeometry.isEmpty()) {
-        guard_.leave(BusyState::Capturing);
-        syncBusyUi(QStringLiteral("Failed to capture desktop"));
-        return;
-    }
-
-    clearOverlay();
-    overlay_ = new capture::CaptureOverlay(snapshot);
-    connect(overlay_, &capture::CaptureOverlay::captureConfirmed,
-            this, &ApplicationController::onCaptureConfirmed);
-    connect(overlay_, &capture::CaptureOverlay::captureCancelled,
-            this, &ApplicationController::onCaptureCancelled);
-    connect(overlay_, &QObject::destroyed, this, [this]() { overlay_ = nullptr; });
-
-    overlay_->show();
-    overlay_->activateWindow();
-    overlay_->raise();
 }
 
 void ApplicationController::openSettings() {
@@ -380,24 +389,6 @@ void ApplicationController::openSettings() {
     settingsDialog_->raise();
     settingsDialog_->activateWindow();
     syncBusyUi();
-}
-
-void ApplicationController::onCaptureConfirmed(const capture::CaptureSelection& selection) {
-    clearOverlay();
-    guard_.leave(BusyState::Capturing);
-    handleConfirmedCapture(selection);
-}
-
-void ApplicationController::onCaptureCancelled() {
-    clearOverlay();
-    guard_.leave(BusyState::Capturing);
-    syncBusyUi(QStringLiteral("Capture cancelled"));
-
-    if (chatPanel_ != nullptr && currentSession_) {
-        chatPanel_->show();
-        chatPanel_->raise();
-        chatPanel_->activateWindow();
-    }
 }
 
 void ApplicationController::onFollowUpRequested(const QString& text) {
@@ -549,6 +540,32 @@ void ApplicationController::ensureSettingsDialog() {
     connect(settingsDialog_, &QObject::destroyed, this, [this]() { settingsDialog_ = nullptr; });
 }
 
+void ApplicationController::rebuildCaptureWorkflowController(
+    std::function<void(const capture::CaptureSelection&)> onConfirmed) {
+    CaptureWorkflowController::Hooks hooks;
+    if (captureService_ != nullptr) {
+        hooks.captureDesktop = [this]() {
+            return captureService_->captureVirtualDesktop();
+        };
+    }
+    hooks.onConfirmed =
+        [onConfirmed = std::move(onConfirmed)](const capture::CaptureSelection& selection) {
+            onConfirmed(selection);
+        };
+    hooks.onCancelled = [this]() {
+        guard_.leave(BusyState::Capturing);
+        if (chatPanel_ != nullptr && currentSession_) {
+            chatPanel_->show();
+            chatPanel_->raise();
+            chatPanel_->activateWindow();
+        }
+    };
+    hooks.syncStatus = [this](const QString& status) {
+        syncBusyUi(status);
+    };
+    captureWorkflowController_ = std::make_unique<CaptureWorkflowController>(std::move(hooks), this);
+}
+
 void ApplicationController::createTray() {
     if (trayIcon_ != nullptr) {
         return;
@@ -648,16 +665,6 @@ bool ApplicationController::registerHotkeys() {
     return aiRegistered && screenshotRegistered;
 }
 
-void ApplicationController::clearOverlay() {
-    if (overlay_ == nullptr) {
-        return;
-    }
-
-    overlay_->hide();
-    overlay_->deleteLater();
-    overlay_ = nullptr;
-}
-
 void ApplicationController::cancelCurrentConversation(const bool clearSession) {
     if (aiClient_ != nullptr) {
         aiClient_->cancelActiveRequest();
@@ -674,15 +681,6 @@ void ApplicationController::cancelCurrentConversation(const bool clearSession) {
         chatPanel_->bindSession(currentSession_);
         chatPanel_->setBusy(false, statusForState(guard_.state()));
     }
-}
-
-void ApplicationController::handleConfirmedCapture(const capture::CaptureSelection& selection) {
-    if (activeCaptureMode_ == CaptureLaunchMode::PlainScreenshot) {
-        handlePlainScreenshotCapture(selection);
-        return;
-    }
-
-    beginSessionFromSelection(selection);
 }
 
 void ApplicationController::handlePlainScreenshotCapture(const capture::CaptureSelection& selection) {
