@@ -20,6 +20,7 @@ class DesktopCaptureService {
 public:
     [[nodiscard]] DesktopSnapshot captureVirtualDesktop() const;
     [[nodiscard]] static DesktopSnapshot composeFrames(const QList<CapturedScreenFrame>& frames);
+    // Compatibility wrapper; FrameNormalizer owns HDR/SDR normalization behavior.
     [[nodiscard]] static QImage normalizeForSdr(const QImage& image);
     [[nodiscard]] static QRect translateToVirtual(const QRect& localRect,
                                                   const QPoint& virtualOrigin);
