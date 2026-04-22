@@ -70,6 +70,7 @@ private slots:
     void bgraMappedTextureProducesArgb32Image();
     void halfFloatMappedTextureProducesLinearFp16Image();
     void shortMappedTextureRowPitchReturnsEmptyImage();
+    void stillCaptureSessionDisablesCursorAndBorder();
     void standardCaptureModePrefersWgcBackendsBeforeGdi();
     void hdrCompatibleCaptureModePrefersGdiBeforeWgcBackends();
     void overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage();
@@ -440,6 +441,13 @@ void CaptureFlowTests::shortMappedTextureRowPitchReturnsEmptyImage() {
         rawPixels.data());
 
     QVERIFY(image.isNull());
+}
+
+void CaptureFlowTests::stillCaptureSessionDisablesCursorAndBorder() {
+    const auto options = ais::platform::windows::detail::stillCaptureSessionOptions();
+
+    QVERIFY(!options.borderRequired);
+    QVERIFY(!options.cursorCaptureEnabled);
 }
 
 void CaptureFlowTests::standardCaptureModePrefersWgcBackendsBeforeGdi() {

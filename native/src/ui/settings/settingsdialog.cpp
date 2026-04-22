@@ -4,11 +4,13 @@
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QKeySequence>
 #include <QLineEdit>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QScreen>
 #include <QSignalBlocker>
 #include <QSizePolicy>
 #include <QStyle>
@@ -40,6 +42,25 @@ using ais::ui::settings_appearance::serializeColor;
 
 [[nodiscard]] ProviderProtocol protocolFromCombo(const QComboBox* comboBox) {
     return static_cast<ProviderProtocol>(comboBox->currentData().toInt());
+}
+
+[[nodiscard]] QPoint clampTopLeftToVisibleArea(const QPoint& requestedTopLeft,
+                                               const QSize& windowSize) {
+    const QPoint probePoint = requestedTopLeft + QPoint(24, 24);
+    const QRect screenGeometry = [probePoint]() {
+        if (QScreen* screen = QGuiApplication::screenAt(probePoint); screen != nullptr) {
+            return screen->availableGeometry();
+        }
+        if (QScreen* screen = QGuiApplication::primaryScreen(); screen != nullptr) {
+            return screen->availableGeometry();
+        }
+        return QRect(QPoint(0, 0), QSize(1920, 1080));
+    }();
+
+    const int maxLeft = screenGeometry.left() + qMax(0, screenGeometry.width() - windowSize.width());
+    const int maxTop = screenGeometry.top() + qMax(0, screenGeometry.height() - windowSize.height());
+    return QPoint(qBound(screenGeometry.left(), requestedTopLeft.x(), maxLeft),
+                  qBound(screenGeometry.top(), requestedTopLeft.y(), maxTop));
 }
 
 [[nodiscard]] QString themedStatusText(bool busy, const QString& status) {
@@ -112,7 +133,10 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     setMinimumSize(520, 560);
     resize(config.settingsDialogSize.isValid()
                ? config.settingsDialogSize.expandedTo(minimumSize())
-               : QSize(540, 560));
+               : QSize(520, 560));
+    if (config.settingsDialogPosition.has_value()) {
+        move(clampTopLeftToVisibleArea(*config.settingsDialogPosition, size()));
+    }
     setAttribute(Qt::WA_StyledBackground, true);
     setAutoFillBackground(true);
 
@@ -460,6 +484,10 @@ QPushButton* SettingsDialog::panelBorderAutoButton() const noexcept {
 
 QFrame* SettingsDialog::previewSurface() const noexcept {
     return appearanceSection_ != nullptr ? appearanceSection_->previewSurface() : nullptr;
+}
+
+QFrame* SettingsDialog::previewComposerShell() const noexcept {
+    return appearanceSection_ != nullptr ? appearanceSection_->previewComposerShell() : nullptr;
 }
 
 QLabel* SettingsDialog::previewTitleLabel() const noexcept {

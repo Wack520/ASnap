@@ -57,6 +57,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     expected.panelBorderColor = QStringLiteral("#6b7280");
     expected.chatPanelSize = QSize(612, 560);
     expected.settingsDialogSize = QSize(688, 604);
+    expected.settingsDialogPosition = QPoint(0, 0);
     expected.launchAtLogin = true;
 
     QVERIFY(store.save(expected));
@@ -76,6 +77,8 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     QCOMPARE(loaded.panelBorderColor, expected.panelBorderColor);
     QCOMPARE(loaded.chatPanelSize, expected.chatPanelSize);
     QCOMPARE(loaded.settingsDialogSize, expected.settingsDialogSize);
+    QVERIFY(loaded.settingsDialogPosition.has_value());
+    QCOMPARE(*loaded.settingsDialogPosition, QPoint(0, 0));
     QCOMPARE(loaded.launchAtLogin, expected.launchAtLogin);
 }
 

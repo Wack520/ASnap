@@ -62,7 +62,7 @@ namespace {
                "<span class=\"code-language\">%1</span>"
                "<a class=\"code-copy\" href=\"copy-code://%2\">Copy</a>"
                "</div>"
-               "<div class=\"code-body\"><pre>%3</pre></div>"
+               "<div class=\"code-body\">%3</div>"
                "</div>")
         .arg(languageText, blockId, highlightedCodeHtml(code, language, theme));
 }

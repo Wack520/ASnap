@@ -27,6 +27,9 @@ constexpr auto kPanelTextColorKey = "panelTextColor";
 constexpr auto kPanelBorderColorKey = "panelBorderColor";
 constexpr auto kChatPanelSizeKey = "chatPanelSize";
 constexpr auto kSettingsDialogSizeKey = "settingsDialogSize";
+constexpr auto kSettingsDialogPositionKey = "settingsDialogPosition";
+constexpr auto kXKey = "x";
+constexpr auto kYKey = "y";
 constexpr auto kWidthKey = "width";
 constexpr auto kHeightKey = "height";
 constexpr auto kCaptureModeKey = "captureMode";
@@ -77,6 +80,16 @@ constexpr auto kLegacyFirstPromptV2 =
             {kHeightKey, size.height()},
         };
     };
+    auto pointToJson = [](const std::optional<QPoint>& point) -> QJsonValue {
+        if (!point.has_value()) {
+            return QJsonValue();
+        }
+
+        return QJsonObject{
+            {kXKey, point->x()},
+            {kYKey, point->y()},
+        };
+    };
 
     QJsonObject object{
         {kActiveProfileKey, toJson(config.activeProfile)},
@@ -99,6 +112,10 @@ constexpr auto kLegacyFirstPromptV2 =
         settingsDialogSize.isObject()) {
         object.insert(kSettingsDialogSizeKey, settingsDialogSize);
     }
+    if (const QJsonValue settingsDialogPosition = pointToJson(config.settingsDialogPosition);
+        settingsDialogPosition.isObject()) {
+        object.insert(kSettingsDialogPositionKey, settingsDialogPosition);
+    }
 
     return object;
 }
@@ -117,6 +134,18 @@ constexpr auto kLegacyFirstPromptV2 =
         }
         return QSize(width, height);
     };
+    auto pointFromJson = [](const QJsonValue& value) -> std::optional<QPoint> {
+        if (!value.isObject()) {
+            return std::nullopt;
+        }
+
+        const QJsonObject object = value.toObject();
+        if (!object.contains(kXKey) || !object.contains(kYKey)) {
+            return std::nullopt;
+        }
+
+        return QPoint(object.value(kXKey).toInt(), object.value(kYKey).toInt());
+    };
 
     AppConfig config;
     config.activeProfile = profileFromJson(json.value(kActiveProfileKey).toObject(), config.activeProfile);
@@ -131,6 +160,7 @@ constexpr auto kLegacyFirstPromptV2 =
     config.panelBorderColor = json.value(kPanelBorderColorKey).toString(config.panelBorderColor);
     config.chatPanelSize = sizeFromJson(json.value(kChatPanelSizeKey));
     config.settingsDialogSize = sizeFromJson(json.value(kSettingsDialogSizeKey));
+    config.settingsDialogPosition = pointFromJson(json.value(kSettingsDialogPositionKey));
     if (const auto captureMode =
             capture::captureModeFromString(json.value(kCaptureModeKey).toString());
         captureMode.has_value()) {

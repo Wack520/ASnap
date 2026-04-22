@@ -1,6 +1,7 @@
 #include <memory>
 
 #include <QApplication>
+#include <QAbstractSpinBox>
 #include <QComboBox>
 #include <QColor>
 #include <QCheckBox>
@@ -14,6 +15,8 @@
 #include <QScrollBar>
 #include <QSignalSpy>
 #include <QTextBrowser>
+#include <QRegularExpression>
+#include <QToolButton>
 #include <QtTest/QtTest>
 #include <QUrl>
 
@@ -23,6 +26,7 @@
 #include "config/provider_preset.h"
 #include "config/provider_protocol.h"
 #include "ui/chat/floating_chat_panel.h"
+#include "ui/chat/floating_chat_panel_helpers.h"
 #include "ui/settings/settingsdialog.h"
 
 using ais::chat::ChatSession;
@@ -55,6 +59,8 @@ private slots:
     void settingsDialogShortcutFieldsShareSingleRow();
     void settingsDialogCanToggleLaunchAtLogin();
     void settingsDialogOpacityFieldUsesPercentForTransparency();
+    void settingsDialogOpacityFieldHidesStepperButtons();
+    void settingsDialogUsesRequestedDefaultAppearance();
     void darkSettingsDialogUsesConsistentDarkSurface();
     void settingsDialogModelRowIncludesFetchAndTestActions();
     void settingsDialogDefaultWidthIsNarrower();
@@ -77,6 +83,8 @@ private slots:
     void settingsDialogPreviewUsesChatLikeMock();
     void settingsDialogPreviewWidgetsDoNotTakeFocus();
     void settingsDialogRestoresSavedSize();
+    void settingsDialogRestoresSavedPosition();
+    void settingsDialogPreviewComposerMatchesFloatingChatLayout();
     void settingsDialogSaveKeepsDialogOpenAndEmitsSignal();
     void bindSessionRendersCurrentHistory();
     void defaultPanelWindowSizeIsCompact();
@@ -93,12 +101,17 @@ private slots:
     void statusBarUsesCompactHeight();
     void chatInputRowUsesChatLikeControls();
     void chatPanelRemovesFooterActionButtons();
+    void chatPanelShowsMinimizeButton();
+    void minimizeButtonHidesPanelWithoutEndingSession();
     void reasoningPanelStartsCollapsedAndCanExpand();
     void reasoningPanelUsesScrollableCompactHeight();
     void assistantMarkdownRendersWithoutLiteralFenceMarkers();
+    void historyCssUsesDedicatedCodeBodyContainer();
     void assistantMarkdownLinksOpenThroughDesktopServices();
     void streamingBadgeRequiresVisibleAssistantText();
     void streamingBadgeAppearsAfterAssistantTextStarts();
+    void floatingPanelKeepsManualScrollPositionWhileStreaming();
+    void floatingPanelScrollbarTintTracksPanelSurface();
     void busyChatPanelKeepsInputEditableWhileRequestIsRunning();
 };
 
@@ -384,6 +397,23 @@ void UiWidgetTests::settingsDialogOpacityFieldUsesPercentForTransparency() {
     QCOMPARE(dialog.currentConfig().opacity, 0.20);
 }
 
+void UiWidgetTests::settingsDialogOpacityFieldHidesStepperButtons() {
+    SettingsDialog dialog(AppConfig{});
+
+    QCOMPARE(dialog.opacityField()->buttonSymbols(), QAbstractSpinBox::NoButtons);
+}
+
+void UiWidgetTests::settingsDialogUsesRequestedDefaultAppearance() {
+    SettingsDialog dialog(AppConfig{});
+    const AppConfig current = dialog.currentConfig();
+
+    QCOMPARE(qRound(dialog.opacityField()->value()), 95);
+    QCOMPARE(current.opacity, 0.95);
+    QCOMPARE(current.panelColor, QStringLiteral("#ffffff"));
+    QCOMPARE(current.panelBorderColor, QStringLiteral("#000000"));
+    QCOMPARE(current.panelTextColor, QString());
+}
+
 void UiWidgetTests::darkSettingsDialogUsesConsistentDarkSurface() {
     AppConfig config;
     config.theme = QStringLiteral("dark");
@@ -431,7 +461,8 @@ void UiWidgetTests::settingsDialogModelRowIncludesFetchAndTestActions() {
 void UiWidgetTests::settingsDialogDefaultWidthIsNarrower() {
     SettingsDialog dialog(AppConfig{});
 
-    QVERIFY(dialog.width() <= 550);
+    QCOMPARE(dialog.width(), dialog.minimumWidth());
+    QCOMPARE(dialog.width(), 520);
 }
 
 void UiWidgetTests::settingsDialogShowsDedicatedModelPopupButton() {
@@ -955,6 +986,33 @@ void UiWidgetTests::settingsDialogRestoresSavedSize() {
     QCOMPARE(dialog.size(), QSize(660, 620));
 }
 
+void UiWidgetTests::settingsDialogRestoresSavedPosition() {
+    AppConfig config;
+    config.settingsDialogPosition = QPoint(180, 140);
+
+    SettingsDialog dialog(config);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(dialog.pos(), QPoint(180, 140));
+}
+
+void UiWidgetTests::settingsDialogPreviewComposerMatchesFloatingChatLayout() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    QCoreApplication::processEvents();
+
+    QVERIFY(dialog.previewComposerShell() != nullptr);
+    QVERIFY(dialog.previewInputPreviewField() != nullptr);
+    QVERIFY(dialog.previewSendButton() != nullptr);
+    QCOMPARE(dialog.previewInputPreviewField()->parentWidget(), dialog.previewComposerShell());
+    QCOMPARE(dialog.previewSendButton()->parentWidget(), dialog.previewComposerShell());
+    QVERIFY(dialog.previewInputPreviewField()->styleSheet().contains(QStringLiteral("background: transparent")));
+    QVERIFY(dialog.previewSendButton()->styleSheet().contains(QStringLiteral("border: none")));
+}
+
 void UiWidgetTests::settingsDialogSaveKeepsDialogOpenAndEmitsSignal() {
     SettingsDialog dialog(AppConfig{});
     dialog.show();
@@ -990,7 +1048,8 @@ void UiWidgetTests::bindSessionRendersCurrentHistory() {
 void UiWidgetTests::defaultPanelWindowSizeIsCompact() {
     FloatingChatPanel panel;
 
-    QVERIFY2(panel.width() <= 600, qPrintable(QStringLiteral("unexpected width: %1").arg(panel.width())));
+    QCOMPARE(panel.width(), panel.minimumWidth());
+    QCOMPARE(panel.width(), 360);
     QVERIFY2(panel.height() <= 660, qPrintable(QStringLiteral("unexpected height: %1").arg(panel.height())));
 }
 
@@ -1019,7 +1078,7 @@ void UiWidgetTests::floatingPanelAppearanceUsesCustomPanelColor() {
     panel.show();
     QCoreApplication::processEvents();
 
-    QVERIFY(panel.styleSheet().contains(QStringLiteral("34,51,68")));
+    QCOMPARE(panel.property("panelSurfaceColor").toString(), QStringLiteral("#223344"));
     QVERIFY(panel.styleSheet().contains(QStringLiteral("#f8fafc"), Qt::CaseInsensitive));
     QVERIFY(panel.property("panelBorderColor").toString().contains(QStringLiteral("#6b7280"), Qt::CaseInsensitive));
 
@@ -1285,6 +1344,32 @@ void UiWidgetTests::chatPanelRemovesFooterActionButtons() {
     QVERIFY(!foundBottomClose);
 }
 
+void UiWidgetTests::chatPanelShowsMinimizeButton() {
+    FloatingChatPanel panel;
+
+    QVERIFY(panel.minimizeButton() != nullptr);
+    QCOMPARE(panel.minimizeButton()->text(), QStringLiteral("−"));
+}
+
+void UiWidgetTests::minimizeButtonHidesPanelWithoutEndingSession() {
+    auto session = std::make_shared<ChatSession>();
+    session->beginWithCapture(QByteArray("png-image"));
+    session->addAssistantText(QStringLiteral("Done"));
+
+    FloatingChatPanel panel;
+    panel.bindSession(session);
+    panel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&panel));
+
+    QSignalSpy dismissedSpy(&panel, &FloatingChatPanel::panelDismissed);
+
+    QTest::mouseClick(panel.minimizeButton(), Qt::LeftButton);
+    QCoreApplication::processEvents();
+
+    QVERIFY(!panel.isVisible());
+    QCOMPARE(dismissedSpy.count(), 0);
+}
+
 void UiWidgetTests::reasoningPanelStartsCollapsedAndCanExpand() {
     auto session = std::make_shared<ChatSession>();
     session->beginWithCapture(QByteArray("png-image"));
@@ -1354,6 +1439,19 @@ void UiWidgetTests::assistantMarkdownRendersWithoutLiteralFenceMarkers() {
     QVERIFY(historyText.contains(QStringLiteral("Copy")));
 }
 
+void UiWidgetTests::historyCssUsesDedicatedCodeBodyContainer() {
+    const QString css = ais::ui::floating_chat_panel_helpers::historyDocumentCss(
+        QStringLiteral("light"),
+        QColor(QStringLiteral("#ffffff")),
+        QColor(QStringLiteral("#15181d")),
+        QColor(QStringLiteral("#5f6b7a")),
+        QColor(QStringLiteral("#000000")),
+        242);
+
+    QVERIFY(css.contains(QStringLiteral(".code-body")));
+    QVERIFY(css.contains(QStringLiteral("border-top")));
+}
+
 void UiWidgetTests::assistantMarkdownLinksOpenThroughDesktopServices() {
     auto session = std::make_shared<ChatSession>();
     session->beginWithCapture(QByteArray("png-image"));
@@ -1405,6 +1503,55 @@ void UiWidgetTests::streamingBadgeAppearsAfterAssistantTextStarts() {
 
     const QString historyHtml = panel.historyView()->toHtml();
     QVERIFY(historyHtml.contains(QStringLiteral("流式输出中")));
+}
+
+void UiWidgetTests::floatingPanelKeepsManualScrollPositionWhileStreaming() {
+    auto session = std::make_shared<ChatSession>();
+    session->beginWithCapture(QByteArray("png-image"));
+    for (int index = 0; index < 18; ++index) {
+        session->addUserText(QStringLiteral("Question %1").arg(index));
+        session->addAssistantText(QStringLiteral("Answer %1\nline a\nline b\nline c\nline d").arg(index));
+    }
+
+    FloatingChatPanel panel;
+    panel.resize(360, 360);
+    panel.bindSession(session);
+    panel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&panel));
+    QCoreApplication::processEvents();
+
+    QScrollBar* const scrollBar = panel.historyView()->verticalScrollBar();
+    QVERIFY(scrollBar != nullptr);
+    QTRY_VERIFY(scrollBar->maximum() > 0);
+
+    scrollBar->setValue(scrollBar->maximum() / 2);
+    const int preservedValue = scrollBar->value();
+    QVERIFY(preservedValue < scrollBar->maximum());
+
+    session->beginAssistantResponse();
+    session->appendAssistantTextDelta(QStringLiteral("流式新增内容"));
+    panel.scheduleSessionRefresh();
+
+    QTRY_VERIFY(scrollBar->value() <= preservedValue + 8);
+    QVERIFY(scrollBar->value() < scrollBar->maximum());
+}
+
+void UiWidgetTests::floatingPanelScrollbarTintTracksPanelSurface() {
+    FloatingChatPanel panel;
+    panel.applyAppearance(QStringLiteral("light"),
+                          0.95,
+                          QStringLiteral("#ffffff"),
+                          QString(),
+                          QStringLiteral("#000000"));
+
+    const QRegularExpression handlePattern(
+        QStringLiteral(R"(QScrollBar::handle:vertical\s*\{\s*background:\s*([^;]+);)"));
+    const QRegularExpressionMatch match = handlePattern.match(panel.styleSheet());
+    QVERIFY(match.hasMatch());
+
+    const QString handleColor = match.captured(1);
+    QVERIFY(handleColor.startsWith(QStringLiteral("rgba(")));
+    QVERIFY(!handleColor.contains(QStringLiteral("0,0,0")));
 }
 
 void UiWidgetTests::busyChatPanelKeepsInputEditableWhileRequestIsRunning() {

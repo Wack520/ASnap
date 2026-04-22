@@ -452,13 +452,27 @@ void configureStillCaptureSession(const GraphicsCaptureSession& session) {
         return;
     }
 
+    const detail::StillCaptureSessionOptions options = detail::stillCaptureSessionOptions();
+
     try {
         if (const auto session3 =
                 session.try_as<winrt::Windows::Graphics::Capture::IGraphicsCaptureSession3>()) {
-            session3.IsBorderRequired(false);
+            session3.IsBorderRequired(options.borderRequired);
         }
     } catch (const winrt::hresult_error& error) {
         qWarning() << "Failed to disable WGC border"
+                   << "hr="
+                   << Qt::hex
+                   << static_cast<quint32>(error.code());
+    }
+
+    try {
+        if (const auto session2 =
+                session.try_as<winrt::Windows::Graphics::Capture::IGraphicsCaptureSession2>()) {
+            session2.IsCursorCaptureEnabled(options.cursorCaptureEnabled);
+        }
+    } catch (const winrt::hresult_error& error) {
+        qWarning() << "Failed to disable WGC cursor capture"
                    << "hr="
                    << Qt::hex
                    << static_cast<quint32>(error.code());
@@ -678,6 +692,13 @@ void configureStillCaptureSession(const GraphicsCaptureSession& session) {
 }
 
 }  // namespace
+
+detail::StillCaptureSessionOptions detail::stillCaptureSessionOptions() {
+    return StillCaptureSessionOptions{
+        .borderRequired = false,
+        .cursorCaptureEnabled = false,
+    };
+}
 
 QImage detail::makeQImageFromMappedTexture(const MappedTextureFormat format,
                                            const QSize& size,

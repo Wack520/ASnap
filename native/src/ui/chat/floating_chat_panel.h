@@ -50,6 +50,7 @@ public:
     [[nodiscard]] QLineEdit* followUpInput() const noexcept { return followUpInput_; }
     [[nodiscard]] QPushButton* sendButton() const noexcept { return sendButton_; }
     [[nodiscard]] QLabel* statusLabel() const noexcept { return statusLabel_; }
+    [[nodiscard]] QToolButton* minimizeButton() const noexcept { return minimizeButton_; }
     [[nodiscard]] QToolButton* closeButton() const noexcept { return closeButton_; }
 
 signals:
@@ -86,10 +87,10 @@ private:
     bool busy_ = false;
     bool reasoningExpanded_ = false;
     QString currentTheme_ = QStringLiteral("dark");
-    QString currentPanelColor_ = QStringLiteral("#101214");
-    QString currentTextColor_ = QStringLiteral("#f7f8fa");
-    QString currentBorderColor_ = QStringLiteral("#22262b");
-    int currentSurfaceAlpha_ = 235;
+    QString currentPanelColor_ = QStringLiteral("#ffffff");
+    QString currentTextColor_ = QStringLiteral("#15181d");
+    QString currentBorderColor_ = QStringLiteral("#000000");
+    int currentSurfaceAlpha_ = 242;
     int copyCounter_ = 0;
     QHash<QString, QString> copyPayloads_;
     std::function<bool(const QUrl&)> externalUrlOpener_;
@@ -99,6 +100,7 @@ private:
     QTimer* refreshTimer_ = nullptr;
     QLabel* statusLabel_ = nullptr;
     QToolButton* reasoningToggleButton_ = nullptr;
+    QToolButton* minimizeButton_ = nullptr;
     QToolButton* closeButton_ = nullptr;
     QTextBrowser* reasoningView_ = nullptr;
     QTextBrowser* historyView_ = nullptr;

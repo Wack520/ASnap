@@ -49,6 +49,35 @@ using ais::chat::ChatRole;
         .arg(actual.alpha());
 }
 
+[[nodiscard]] QColor elevatedSurfaceColor(const QColor& surfaceColor,
+                                          const QString& theme,
+                                          const int lightFactor,
+                                          const int darkFactor) {
+    const QColor reference = surfaceColor.isValid() ? surfaceColor : fallbackSurfaceColor(theme);
+    QColor elevated = effectiveThemeName(theme) == QStringLiteral("light")
+        ? reference.darker(lightFactor)
+        : reference.lighter(darkFactor);
+    if (qAbs(elevated.lightness() - reference.lightness()) < 6) {
+        elevated = effectiveThemeName(theme) == QStringLiteral("light")
+            ? QColor(QStringLiteral("#eef2f7"))
+            : QColor(QStringLiteral("#181c20"));
+    }
+    elevated.setAlpha(reference.alpha());
+    return elevated;
+}
+
+[[nodiscard]] QColor scrollbarTrackColor(const QColor& surfaceColor, const QString& theme) {
+    QColor track = elevatedSurfaceColor(surfaceColor, theme, 102, 106);
+    track.setAlpha(effectiveThemeName(theme) == QStringLiteral("light") ? 92 : 108);
+    return track;
+}
+
+[[nodiscard]] QColor scrollbarHandleColor(const QColor& surfaceColor, const QString& theme) {
+    QColor handle = elevatedSurfaceColor(surfaceColor, theme, 118, 132);
+    handle.setAlpha(effectiveThemeName(theme) == QStringLiteral("light") ? 156 : 168);
+    return handle;
+}
+
 }  // namespace
 
 QString effectiveThemeName(const QString& theme) {
@@ -165,12 +194,18 @@ QString styleSheetForTheme(const QString& theme,
                            const QColor& mutedTextColor,
                            const QColor& lineColor,
                            const int surfaceAlpha) {
-    const QString subtleSurface = cssColor(surfaceColor, qBound(0, qRound(surfaceAlpha * 0.74), 255));
-    const QString strongerSurface = cssColor(surfaceColor, qBound(0, qRound(surfaceAlpha * 0.82) + 2, 255));
+    QColor subtleSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 104, 108);
+    QColor strongerSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 108, 114);
+    subtleSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.78), 255));
+    strongerSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.86) + 2, 255));
+    const QString subtleSurface = cssColor(subtleSurfaceColor);
+    const QString strongerSurface = cssColor(strongerSurfaceColor);
     const QString borderColor = cssColor(lineColor, effectiveThemeName(theme) == QStringLiteral("light") ? 230 : 132);
     const QString selectionColor = effectiveThemeName(theme) == QStringLiteral("light")
         ? QStringLiteral("#0969da")
         : QStringLiteral("#34404d");
+    const QString scrollTrack = cssColor(scrollbarTrackColor(surfaceColor, theme));
+    const QString scrollHandle = cssColor(scrollbarHandleColor(surfaceColor, theme));
 
     return QStringLiteral(
         "FloatingChatPanel { background: transparent; color: %1; border: none; font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI'; }"
@@ -186,18 +221,23 @@ QString styleSheetForTheme(const QString& theme,
         "QPushButton#sendButton { background: transparent; color: %1; border: none; border-radius: 13px; padding: 0; min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; font-size: 15px; font-weight: 700; }"
         "QPushButton#sendButton:hover { background: %3; }"
         "QPushButton#sendButton:disabled { color: %2; background: transparent; }"
+        "QToolButton#minimizeButton { background: transparent; color: %2; border: 1px solid transparent; border-radius: 9px; padding: 0; min-width: 18px; min-height: 18px; font-size: 14px; }"
+        "QToolButton#minimizeButton:hover { color: %1; border-color: %5; background: %4; }"
+        "QToolButton#minimizeButton:pressed { background: %3; }"
         "QToolButton#dismissButton { background: transparent; color: %2; border: 1px solid transparent; border-radius: 9px; padding: 0; min-width: 18px; min-height: 18px; }"
         "QToolButton#dismissButton:hover { color: %1; border-color: %5; background: %4; }"
         "QToolButton#dismissButton:pressed { background: %3; }"
-        "QScrollBar:vertical { background: transparent; width: 10px; margin: 4px 0 4px 0; }"
-        "QScrollBar::handle:vertical { background: %5; min-height: 24px; border-radius: 5px; }"
+        "QScrollBar:vertical { background: %7; width: 10px; margin: 4px 0 4px 0; border-radius: 5px; }"
+        "QScrollBar::handle:vertical { background: %8; min-height: 24px; border-radius: 5px; }"
         "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical, QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; border: none; }")
         .arg(textColor.name(),
              mutedTextColor.name(),
              strongerSurface,
              subtleSurface,
              borderColor,
-             selectionColor);
+             selectionColor,
+             scrollTrack,
+             scrollHandle);
 }
 
 QString historyDocumentCss(const QString& theme,
@@ -206,8 +246,12 @@ QString historyDocumentCss(const QString& theme,
                            const QColor& mutedTextColor,
                            const QColor& lineColor,
                            const int surfaceAlpha) {
-    const QString codeSurface = cssColor(surfaceColor, qBound(0, qRound(surfaceAlpha * 0.78) + 4, 255));
-    const QString toolbarSurface = cssColor(surfaceColor, qBound(0, qRound(surfaceAlpha * 0.82) + 6, 255));
+    QColor codeSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 106, 112);
+    QColor toolbarSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 110, 118);
+    codeSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.82) + 4, 255));
+    toolbarSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.88) + 6, 255));
+    const QString codeSurface = cssColor(codeSurfaceColor);
+    const QString toolbarSurface = cssColor(toolbarSurfaceColor);
     const QString subtleBorder = cssColor(lineColor, effectiveThemeName(theme) == QStringLiteral("light") ? 120 : 64);
 
     return QStringLiteral(
@@ -226,6 +270,9 @@ QString historyDocumentCss(const QString& theme,
         ".body a { color: %1; text-decoration: underline; }"
         ".code-card { margin: 8px 0; border: 1px solid %6; border-radius: 10px; overflow: hidden; background: %4; }"
         ".code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: %5; border-bottom: 1px solid %6; }"
+        ".code-body { background: %4; border-top: 1px solid %6; padding: 10px 12px; }"
+        ".code-body pre, .code-body p { margin: 0; font-family: 'Cascadia Code', 'Consolas', monospace; white-space: pre-wrap; }"
+        ".code-body span { background: transparent; }"
         ".code-language { font-family: 'Segoe UI'; font-size: 11px; text-transform: uppercase; color: %2; }"
         ".code-copy { font-family: 'Segoe UI'; font-size: 12px; color: %1; text-decoration: none; }"
         ".streaming-badge { margin-left: 8px; font-size: 11px; color: %2; font-weight: 400; }"

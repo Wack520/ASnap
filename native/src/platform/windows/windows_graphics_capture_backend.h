@@ -15,10 +15,16 @@ enum class MappedTextureFormat {
     Rgba16Float,
 };
 
+struct StillCaptureSessionOptions {
+    bool borderRequired = false;
+    bool cursorCaptureEnabled = false;
+};
+
 [[nodiscard]] QImage makeQImageFromMappedTexture(MappedTextureFormat format,
                                                  const QSize& size,
                                                  qsizetype rowPitch,
                                                  const uchar* data);
+[[nodiscard]] StillCaptureSessionOptions stillCaptureSessionOptions();
 
 }  // namespace detail
 

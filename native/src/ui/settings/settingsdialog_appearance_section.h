@@ -35,6 +35,7 @@ public:
     [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept { return panelBorderColorButton_; }
     [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept { return panelBorderAutoButton_; }
     [[nodiscard]] QFrame* previewSurface() const noexcept { return previewSurface_; }
+    [[nodiscard]] QFrame* previewComposerShell() const noexcept { return previewComposerShell_; }
     [[nodiscard]] QLabel* previewTitleLabel() const noexcept { return previewTitleLabel_; }
     [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept { return previewHistoryView_; }
     [[nodiscard]] QLineEdit* previewInputField() const noexcept { return previewInputField_; }
@@ -64,6 +65,7 @@ private:
     QLabel* previewStatusLabel_ = nullptr;
     QToolButton* previewReasoningToggle_ = nullptr;
     QTextBrowser* previewHistoryView_ = nullptr;
+    QFrame* previewComposerShell_ = nullptr;
     QLineEdit* previewInputField_ = nullptr;
     QPushButton* previewSendButton_ = nullptr;
     QColor panelColor_;

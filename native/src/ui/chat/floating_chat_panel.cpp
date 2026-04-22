@@ -14,7 +14,7 @@
 #include <QPen>
 #include <QSignalBlocker>
 #include <QSizePolicy>
-#include <QTextCursor>
+#include <QScrollBar>
 #include <QVBoxLayout>
 #include <QUrl>
 
@@ -36,6 +36,13 @@ constexpr int kMinimumPanelHeight = 320;
 constexpr int kMaximumPanelWidth = 1280;
 constexpr int kPanelCornerRadius = 18;
 
+[[nodiscard]] bool isHeaderControl(const QWidget* widget,
+                                   const QToolButton* minimizeButton,
+                                   const QToolButton* closeButton) {
+    return widget != nullptr &&
+           (widget == minimizeButton || widget == closeButton);
+}
+
 }  // namespace
 
 FloatingChatPanel::FloatingChatPanel(QWidget* parent)
@@ -45,7 +52,7 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     setAttribute(Qt::WA_TranslucentBackground, true);
     setMinimumWidth(kMinimumPanelWidth);
     setMinimumHeight(kMinimumPanelHeight);
-    resize(560, 560);
+    resize(kMinimumPanelWidth, 560);
 
     statusLabel_ = new QLabel(QStringLiteral("就绪"), this);
     statusLabel_->setObjectName(QStringLiteral("statusBarLabel"));
@@ -88,6 +95,12 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     sendButton_->setCursor(Qt::PointingHandCursor);
     sendButton_->setFixedSize(26, 26);
 
+    minimizeButton_ = new QToolButton(this);
+    minimizeButton_->setObjectName(QStringLiteral("minimizeButton"));
+    minimizeButton_->setText(QStringLiteral("−"));
+    minimizeButton_->setAutoRaise(true);
+    minimizeButton_->setCursor(Qt::PointingHandCursor);
+
     closeButton_ = new QToolButton(this);
     closeButton_->setObjectName(QStringLiteral("dismissButton"));
     closeButton_->setText(QStringLiteral("×"));
@@ -102,6 +115,7 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     auto* headerRow = new QHBoxLayout();
     headerRow->setSpacing(6);
     headerRow->addWidget(statusLabel_, 1);
+    headerRow->addWidget(minimizeButton_);
     headerRow->addWidget(closeButton_);
 
     composerShell_ = new QFrame(this);
@@ -129,6 +143,7 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
 
     connect(sendButton_, &QPushButton::clicked, this, &FloatingChatPanel::emitSendRequest);
     connect(followUpInput_, &QLineEdit::returnPressed, this, &FloatingChatPanel::emitSendRequest);
+    connect(minimizeButton_, &QToolButton::clicked, this, &QWidget::hide);
     connect(closeButton_, &QToolButton::clicked, this, &QWidget::close);
     connect(historyView_, &QTextBrowser::anchorClicked, this, &FloatingChatPanel::handleRichTextLink);
     connect(reasoningView_, &QTextBrowser::anchorClicked, this, &FloatingChatPanel::handleRichTextLink);
@@ -138,7 +153,11 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
                 refreshReasoning();
             });
 
-    applyAppearance(QStringLiteral("system"), 0.92);
+    applyAppearance(QStringLiteral("system"),
+                    0.95,
+                    QStringLiteral("#ffffff"),
+                    QString(),
+                    QStringLiteral("#000000"));
     refreshInputState();
 }
 
@@ -195,7 +214,8 @@ bool FloatingChatPanel::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::MouseButtonRelease: {
         auto* mouseEvent = static_cast<QMouseEvent*>(event);
         const QPoint panelPos = mapFromGlobal(mouseEvent->globalPosition().toPoint());
-        if (widget == closeButton_ && interactionMode_ == InteractionMode::None) {
+        if (isHeaderControl(widget, minimizeButton_, closeButton_) &&
+            interactionMode_ == InteractionMode::None) {
             unsetCursor();
             break;
         }
@@ -391,7 +411,8 @@ void FloatingChatPanel::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 FloatingChatPanel::InteractionMode FloatingChatPanel::hitTestInteraction(const QPoint& pos) const {
-    if (closeButton_ != nullptr && closeButton_->geometry().contains(pos)) {
+    if ((minimizeButton_ != nullptr && minimizeButton_->geometry().contains(pos)) ||
+        (closeButton_ != nullptr && closeButton_->geometry().contains(pos))) {
         return InteractionMode::None;
     }
     if (pos.x() <= kResizeMargin) {
@@ -425,6 +446,15 @@ void FloatingChatPanel::refreshHistory() {
         return;
     }
 
+    QScrollBar* const verticalScrollBar =
+        historyView_ != nullptr ? historyView_->verticalScrollBar() : nullptr;
+    const int previousScrollValue = verticalScrollBar != nullptr ? verticalScrollBar->value() : 0;
+    const int previousScrollMaximum = verticalScrollBar != nullptr ? verticalScrollBar->maximum() : 0;
+    const bool shouldFollowLatestMessage =
+        verticalScrollBar == nullptr ||
+        previousScrollMaximum <= 0 ||
+        (previousScrollMaximum - previousScrollValue) <= 12;
+
     QString html = QStringLiteral(
         "<html><head><style>"
         "%1"
@@ -444,7 +474,16 @@ void FloatingChatPanel::refreshHistory() {
     html += QStringLiteral("</body></html>");
 
     historyView_->setHtml(html);
-    historyView_->moveCursor(QTextCursor::End);
+    if (verticalScrollBar == nullptr) {
+        return;
+    }
+
+    if (shouldFollowLatestMessage) {
+        verticalScrollBar->setValue(verticalScrollBar->maximum());
+        return;
+    }
+
+    verticalScrollBar->setValue(qMin(previousScrollValue, verticalScrollBar->maximum()));
 }
 
 void FloatingChatPanel::refreshReasoning() {

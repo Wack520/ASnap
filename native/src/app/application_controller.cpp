@@ -684,19 +684,20 @@ void ApplicationController::applyConfigDefaults() {
 
     config_.opacity = qBound(0.30, config_.opacity, 1.00);
     if (!QColor(config_.panelColor).isValid()) {
-        config_.panelColor = QStringLiteral("#101214");
+        config_.panelColor = QStringLiteral("#ffffff");
     }
     if (!config_.panelTextColor.trimmed().isEmpty() && !QColor(config_.panelTextColor).isValid()) {
         config_.panelTextColor.clear();
     }
-    if (!config_.panelBorderColor.trimmed().isEmpty() && !QColor(config_.panelBorderColor).isValid()) {
-        config_.panelBorderColor.clear();
+    if (config_.panelBorderColor.trimmed().isEmpty() ||
+        !QColor(config_.panelBorderColor).isValid()) {
+        config_.panelBorderColor = QStringLiteral("#000000");
     }
     if (!config_.chatPanelSize.isValid()) {
-        config_.chatPanelSize = {};
+        config_.chatPanelSize = config::defaultChatPanelSize();
     }
     if (!config_.settingsDialogSize.isValid()) {
-        config_.settingsDialogSize = {};
+        config_.settingsDialogSize = config::defaultSettingsDialogSize();
     }
     if (config_.firstPrompt.trimmed().isEmpty()) {
         config_.firstPrompt = config::defaultFirstPromptText();
@@ -1008,6 +1009,7 @@ void ApplicationController::rememberWindowSizes() {
     }
     if (settingsDialog_ != nullptr) {
         config_.settingsDialogSize = settingsDialog_->size();
+        config_.settingsDialogPosition = settingsDialog_->pos();
     }
 }
 

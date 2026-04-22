@@ -1,5 +1,6 @@
 #include "ui/settings/settingsdialog_appearance_section.h"
 
+#include <QAbstractSpinBox>
 #include <QColorDialog>
 #include <QComboBox>
 #include <QDoubleSpinBox>
@@ -30,6 +31,24 @@ using ais::ui::settings_appearance::previewDocumentCss;
 using ais::ui::settings_appearance::previewDocumentHtml;
 using ais::ui::settings_appearance::serializeColor;
 
+[[nodiscard]] QColor elevatedPreviewSurface(const QColor& baseColor,
+                                            const QString& theme,
+                                            const int lightFactor,
+                                            const int darkFactor) {
+    const QColor reference = baseColor.isValid() ? baseColor : fallbackSurfaceColor(theme);
+    QColor elevated = reference;
+    elevated = effectiveThemeName(theme) == QStringLiteral("light")
+        ? elevated.darker(lightFactor)
+        : elevated.lighter(darkFactor);
+    if (qAbs(elevated.lightness() - reference.lightness()) < 6) {
+        elevated = effectiveThemeName(theme) == QStringLiteral("light")
+            ? QColor(QStringLiteral("#eef2f7"))
+            : QColor(QStringLiteral("#181c20"));
+    }
+    elevated.setAlpha(reference.alpha());
+    return elevated;
+}
+
 }  // namespace
 
 SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent)
@@ -45,6 +64,7 @@ SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent
     opacityField_->setRange(0.0, 100.0);
     opacityField_->setSingleStep(5.0);
     opacityField_->setDecimals(0);
+    opacityField_->setButtonSymbols(QAbstractSpinBox::NoButtons);
     opacityField_->setSuffix(QStringLiteral("%"));
     opacityField_->setToolTip(QStringLiteral("想要透明背景，直接调这里；0% 接近全透明，100% 完全不透明。"));
 
@@ -86,14 +106,21 @@ SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent
     previewHistoryView_->setFocusPolicy(Qt::NoFocus);
     previewHistoryView_->viewport()->setFocusPolicy(Qt::NoFocus);
 
-    previewInputField_ = new QLineEdit(previewSurface_);
+    previewComposerShell_ = new QFrame(previewSurface_);
+    previewComposerShell_->setObjectName(QStringLiteral("previewComposerShell"));
+    previewComposerShell_->setMinimumHeight(38);
+
+    previewInputField_ = new QLineEdit(previewComposerShell_);
     previewInputField_->setPlaceholderText(QStringLiteral("继续追问，按 Enter 发送…"));
     previewInputField_->setEnabled(false);
     previewInputField_->setFocusPolicy(Qt::NoFocus);
+    previewInputField_->setMinimumHeight(30);
+    previewInputField_->setFrame(false);
 
-    previewSendButton_ = new QPushButton(QStringLiteral("↑"), previewSurface_);
+    previewSendButton_ = new QPushButton(QStringLiteral("↑"), previewComposerShell_);
     previewSendButton_->setEnabled(false);
     previewSendButton_->setFocusPolicy(Qt::NoFocus);
+    previewSendButton_->setFixedSize(26, 26);
 
     auto* previewLayout = new QVBoxLayout(previewSurface_);
     previewLayout->setContentsMargins(14, 12, 14, 12);
@@ -103,11 +130,12 @@ SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent
     previewLayout->addWidget(previewReasoningToggle_);
     previewLayout->addWidget(previewHistoryView_);
 
-    auto* previewInputRow = new QHBoxLayout();
-    previewInputRow->setSpacing(8);
-    previewInputRow->addWidget(previewInputField_, 1);
-    previewInputRow->addWidget(previewSendButton_);
-    previewLayout->addLayout(previewInputRow);
+    auto* previewComposerLayout = new QHBoxLayout(previewComposerShell_);
+    previewComposerLayout->setContentsMargins(12, 5, 8, 5);
+    previewComposerLayout->setSpacing(8);
+    previewComposerLayout->addWidget(previewInputField_, 1);
+    previewComposerLayout->addWidget(previewSendButton_, 0, Qt::AlignRight | Qt::AlignVCenter);
+    previewLayout->addWidget(previewComposerShell_);
 
     auto* previewShell = new QFrame(this);
     previewShell->setObjectName(QStringLiteral("previewShell"));
@@ -274,8 +302,12 @@ void SettingsDialogAppearanceSection::refreshPreview() {
         ? panelBorderColor_
         : autoBorderColor(panelColor_, theme);
     const QColor mutedColor = mutedTextColorForTheme(theme);
-    const QString codeSurface = cssColor(panelColor_, qBound(0, effectiveColor.alpha() + 18, 255));
-    const QString chromeSurface = cssColor(panelColor_, qBound(0, effectiveColor.alpha() + 28, 255));
+    QColor codeColor = elevatedPreviewSurface(panelColor_, theme, 106, 112);
+    QColor chromeColor = elevatedPreviewSurface(panelColor_, theme, 104, 108);
+    codeColor.setAlpha(qBound(0, effectiveColor.alpha() + 12, 255));
+    chromeColor.setAlpha(qBound(0, effectiveColor.alpha() + 20, 255));
+    const QString codeSurface = cssColor(codeColor);
+    const QString chromeSurface = cssColor(chromeColor);
     const QString previewBorderCss = effectiveThemeName(theme) == QStringLiteral("dark")
         ? cssColor(borderColor, qMin(borderColor.alpha(), 120))
         : cssColor(borderColor);
@@ -295,12 +327,22 @@ void SettingsDialogAppearanceSection::refreshPreview() {
     previewReasoningToggle_->setStyleSheet(QStringLiteral(
         "QToolButton { color: %1; border: none; padding: 0; background: transparent; }")
                                                 .arg(mutedColor.name(QColor::HexRgb)));
+    if (previewComposerShell_ != nullptr) {
+        previewComposerShell_->setStyleSheet(QStringLiteral(
+            "QFrame#previewComposerShell { background: %1; border: 1px solid %2; border-radius: 18px; }")
+                                                 .arg(chromeSurface, previewBorderCss));
+    }
     previewInputField_->setStyleSheet(QStringLiteral(
-        "QLineEdit { background: %1; color: %2; border: 1px solid %3; border-radius: 16px; padding: 7px 12px; }")
-                                          .arg(chromeSurface, panelTextColor_.name(QColor::HexRgb), previewBorderCss));
+        "QLineEdit { background: transparent; color: %1; border: none; padding: 0 2px 0 0; min-height: 18px; }"
+        "QLineEdit:focus { border: none; }")
+                                          .arg(panelTextColor_.name(QColor::HexRgb)));
     previewSendButton_->setStyleSheet(QStringLiteral(
-        "QPushButton { background: %1; color: %2; border: 1px solid %3; border-radius: 16px; padding: 7px 12px; min-width: 56px; }")
-                                           .arg(chromeSurface, panelTextColor_.name(QColor::HexRgb), previewBorderCss));
+        "QPushButton { background: transparent; color: %1; border: none; border-radius: 13px; padding: 0; min-width: 26px; max-width: 26px; min-height: 26px; max-height: 26px; font-size: 15px; font-weight: 700; }"
+        "QPushButton:hover { background: %2; }"
+        "QPushButton:disabled { color: %3; background: transparent; }")
+                                           .arg(panelTextColor_.name(QColor::HexRgb),
+                                                chromeSurface,
+                                                mutedColor.name(QColor::HexRgb)));
 
     const QString documentCss = previewDocumentCss(panelTextColor_.name(QColor::HexRgb),
                                                    mutedColor.name(QColor::HexRgb),

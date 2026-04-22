@@ -65,6 +65,7 @@ public:
     [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept;
     [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept;
     [[nodiscard]] QFrame* previewSurface() const noexcept;
+    [[nodiscard]] QFrame* previewComposerShell() const noexcept;
     [[nodiscard]] QLabel* previewTitleLabel() const noexcept;
     [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept;
     [[nodiscard]] QLineEdit* previewInputPreviewField() const noexcept;
