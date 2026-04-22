@@ -86,6 +86,8 @@ private:
     std::shared_ptr<ais::chat::ChatSession> session_;
     bool busy_ = false;
     bool reasoningExpanded_ = false;
+    bool historyAutoFollow_ = true;
+    bool suppressHistoryScrollTracking_ = false;
     QString currentTheme_ = QStringLiteral("dark");
     QString currentPanelColor_ = QStringLiteral("#ffffff");
     QString currentTextColor_ = QStringLiteral("#15181d");

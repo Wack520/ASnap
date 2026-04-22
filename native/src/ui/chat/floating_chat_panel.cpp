@@ -83,6 +83,14 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     historyView_->setOpenExternalLinks(false);
     historyView_->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     historyView_->setFrameShape(QFrame::NoFrame);
+    if (QScrollBar* historyScrollBar = historyView_->verticalScrollBar(); historyScrollBar != nullptr) {
+        connect(historyScrollBar, &QScrollBar::valueChanged, this, [this, historyScrollBar](int value) {
+            if (suppressHistoryScrollTracking_) {
+                return;
+            }
+            historyAutoFollow_ = (historyScrollBar->maximum() - value) <= 12;
+        });
+    }
 
     followUpInput_ = new QLineEdit(this);
     followUpInput_->setObjectName(QStringLiteral("chatInput"));
@@ -164,6 +172,7 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
 void FloatingChatPanel::bindSession(const std::shared_ptr<ais::chat::ChatSession>& session) {
     if (session_ != session) {
         reasoningExpanded_ = false;
+        historyAutoFollow_ = true;
     }
     session_ = session;
     refreshBoundSessionViews();
@@ -311,7 +320,7 @@ void FloatingChatPanel::applyAppearance(const QString& theme,
     const QString effectiveTheme = helpers::effectiveThemeName(theme);
     const QColor surfaceColor = helpers::resolveSurfaceColor(effectiveTheme, panelColor);
     const QColor textColor = helpers::resolveTextColor(effectiveTheme, surfaceColor, panelTextColor);
-    const QColor mutedTextColor = helpers::mutedTextColorForTheme(effectiveTheme);
+    const QColor mutedTextColor = helpers::mutedTextColorForSurface(surfaceColor, effectiveTheme);
     const QColor lineColor = helpers::resolveBorderColor(effectiveTheme, surfaceColor, panelBorderColor);
     const int surfaceAlpha = qBound(0, qRound(surfaceColor.alphaF() * opacity * 255.0), 255);
     currentTheme_ = effectiveTheme;
@@ -442,6 +451,7 @@ void FloatingChatPanel::applyCursorForPosition(const QPoint& pos) {
 
 void FloatingChatPanel::refreshHistory() {
     if (!session_) {
+        historyAutoFollow_ = true;
         historyView_->clear();
         return;
     }
@@ -450,10 +460,12 @@ void FloatingChatPanel::refreshHistory() {
         historyView_ != nullptr ? historyView_->verticalScrollBar() : nullptr;
     const int previousScrollValue = verticalScrollBar != nullptr ? verticalScrollBar->value() : 0;
     const int previousScrollMaximum = verticalScrollBar != nullptr ? verticalScrollBar->maximum() : 0;
+    const int previousDistanceFromBottom =
+        verticalScrollBar != nullptr ? qMax(0, previousScrollMaximum - previousScrollValue) : 0;
     const bool shouldFollowLatestMessage =
         verticalScrollBar == nullptr ||
         previousScrollMaximum <= 0 ||
-        (previousScrollMaximum - previousScrollValue) <= 12;
+        historyAutoFollow_;
 
     QString html = QStringLiteral(
         "<html><head><style>"
@@ -461,7 +473,9 @@ void FloatingChatPanel::refreshHistory() {
         "</style></head><body>").arg(helpers::historyDocumentCss(currentTheme_,
                                                                  helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
                                                                  QColor(currentTextColor_),
-                                                                 helpers::mutedTextColorForTheme(currentTheme_),
+                                                                 helpers::mutedTextColorForSurface(
+                                                                     helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
+                                                                     currentTheme_),
                                                                  helpers::resolveBorderColor(
                                                                      currentTheme_,
                                                                      helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
@@ -473,20 +487,38 @@ void FloatingChatPanel::refreshHistory() {
     }
     html += QStringLiteral("</body></html>");
 
+    const auto restoreHistoryScrollPosition = [this,
+                                               verticalScrollBar,
+                                               shouldFollowLatestMessage,
+                                               previousDistanceFromBottom]() {
+        if (verticalScrollBar == nullptr) {
+            return;
+        }
+
+        const QSignalBlocker blocker(verticalScrollBar);
+        suppressHistoryScrollTracking_ = true;
+        if (shouldFollowLatestMessage) {
+            verticalScrollBar->setValue(verticalScrollBar->maximum());
+            historyAutoFollow_ = true;
+        } else {
+            verticalScrollBar->setValue(qMax(0, verticalScrollBar->maximum() - previousDistanceFromBottom));
+            historyAutoFollow_ = (verticalScrollBar->maximum() - verticalScrollBar->value()) <= 12;
+        }
+        suppressHistoryScrollTracking_ = false;
+    };
+
     const bool updatesWereEnabled = historyView_->updatesEnabled();
+    suppressHistoryScrollTracking_ = true;
     historyView_->setUpdatesEnabled(false);
     historyView_->setHtml(html);
+    restoreHistoryScrollPosition();
     historyView_->setUpdatesEnabled(updatesWereEnabled);
+    suppressHistoryScrollTracking_ = false;
     if (verticalScrollBar == nullptr) {
         return;
     }
 
-    if (shouldFollowLatestMessage) {
-        verticalScrollBar->setValue(verticalScrollBar->maximum());
-        return;
-    }
-
-    verticalScrollBar->setValue(qMin(previousScrollValue, verticalScrollBar->maximum()));
+    QTimer::singleShot(0, historyView_, restoreHistoryScrollPosition);
 }
 
 void FloatingChatPanel::refreshReasoning() {
@@ -546,7 +578,9 @@ void FloatingChatPanel::refreshReasoning() {
                 .arg(helpers::historyDocumentCss(currentTheme_,
                                                  helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
                                                  QColor(currentTextColor_),
-                                                 helpers::mutedTextColorForTheme(currentTheme_),
+                                                 helpers::mutedTextColorForSurface(
+                                                     helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
+                                                     currentTheme_),
                                                  helpers::resolveBorderColor(
                                                      currentTheme_,
                                                      helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),

@@ -113,7 +113,9 @@ private slots:
     void assistantMarkdownLinksOpenThroughDesktopServices();
     void streamingBadgeRequiresVisibleAssistantText();
     void streamingBadgeAppearsAfterAssistantTextStarts();
+    void floatingPanelKeepsDarkChromeForDarkCustomSurface();
     void floatingPanelKeepsManualScrollPositionWhileStreaming();
+    void floatingPanelAutoFollowStaysNearBottomWhileStreaming();
     void floatingPanelScrollbarTintTracksPanelSurface();
     void busyChatPanelKeepsInputEditableWhileRequestIsRunning();
 };
@@ -1539,6 +1541,63 @@ void UiWidgetTests::streamingBadgeAppearsAfterAssistantTextStarts() {
     QVERIFY(historyHtml.contains(QStringLiteral("流式输出中")));
 }
 
+void UiWidgetTests::floatingPanelKeepsDarkChromeForDarkCustomSurface() {
+    FloatingChatPanel panel;
+    panel.applyAppearance(QStringLiteral("light"),
+                          0.95,
+                          QStringLiteral("#101214"),
+                          QString(),
+                          QString());
+
+    const QRegularExpression inputPattern(
+        QStringLiteral(R"(QFrame#chatInputShell\s*\{\s*background:\s*rgba\((\d+),(\d+),(\d+),)"));
+    const QRegularExpressionMatch inputMatch = inputPattern.match(panel.styleSheet());
+    QVERIFY(inputMatch.hasMatch());
+
+    const int inputRed = inputMatch.captured(1).toInt();
+    const int inputGreen = inputMatch.captured(2).toInt();
+    const int inputBlue = inputMatch.captured(3).toInt();
+    QVERIFY2(qMax(inputRed, qMax(inputGreen, inputBlue)) < 80,
+             qPrintable(QStringLiteral("expected dark input shell, got rgb(%1,%2,%3)")
+                            .arg(inputRed)
+                            .arg(inputGreen)
+                            .arg(inputBlue)));
+
+    const QColor panelColor(QStringLiteral("#101214"));
+    const QColor textColor = ais::ui::floating_chat_panel_helpers::resolveTextColor(
+        QStringLiteral("light"),
+        panelColor,
+        QString());
+    const QColor mutedTextColor = ais::ui::floating_chat_panel_helpers::mutedTextColorForSurface(
+        panelColor,
+        QStringLiteral("light"));
+    const QColor borderColor = ais::ui::floating_chat_panel_helpers::resolveBorderColor(
+        QStringLiteral("light"),
+        panelColor,
+        QString());
+    const QString css = ais::ui::floating_chat_panel_helpers::historyDocumentCss(
+        QStringLiteral("light"),
+        panelColor,
+        textColor,
+        mutedTextColor,
+        borderColor,
+        242);
+
+    const QRegularExpression codePattern(
+        QStringLiteral(R"(\.code-card\s*\{[^}]*background:\s*rgba\((\d+),(\d+),(\d+),)"));
+    const QRegularExpressionMatch codeMatch = codePattern.match(css);
+    QVERIFY(codeMatch.hasMatch());
+
+    const int codeRed = codeMatch.captured(1).toInt();
+    const int codeGreen = codeMatch.captured(2).toInt();
+    const int codeBlue = codeMatch.captured(3).toInt();
+    QVERIFY2(qMax(codeRed, qMax(codeGreen, codeBlue)) < 80,
+             qPrintable(QStringLiteral("expected dark code surface, got rgb(%1,%2,%3)")
+                            .arg(codeRed)
+                            .arg(codeGreen)
+                            .arg(codeBlue)));
+}
+
 void UiWidgetTests::floatingPanelKeepsManualScrollPositionWhileStreaming() {
     auto session = std::make_shared<ChatSession>();
     session->beginWithCapture(QByteArray("png-image"));
@@ -1568,6 +1627,45 @@ void UiWidgetTests::floatingPanelKeepsManualScrollPositionWhileStreaming() {
 
     QTRY_VERIFY(scrollBar->value() <= preservedValue + 8);
     QVERIFY(scrollBar->value() < scrollBar->maximum());
+}
+
+void UiWidgetTests::floatingPanelAutoFollowStaysNearBottomWhileStreaming() {
+    auto session = std::make_shared<ChatSession>();
+    session->beginWithCapture(QByteArray("png-image"));
+    for (int index = 0; index < 24; ++index) {
+        session->addUserText(QStringLiteral("Question %1").arg(index));
+        session->addAssistantText(QStringLiteral("Answer %1\nline a\nline b\nline c\nline d").arg(index));
+    }
+
+    FloatingChatPanel panel;
+    panel.resize(360, 360);
+    panel.bindSession(session);
+    panel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&panel));
+    QCoreApplication::processEvents();
+
+    QScrollBar* const scrollBar = panel.historyView()->verticalScrollBar();
+    QVERIFY(scrollBar != nullptr);
+    QTRY_VERIFY(scrollBar->maximum() > 0);
+
+    scrollBar->setValue(scrollBar->maximum());
+    QCoreApplication::processEvents();
+
+    int furthestDistanceFromBottom = 0;
+    QObject::connect(scrollBar, &QScrollBar::valueChanged, &panel, [scrollBar, &furthestDistanceFromBottom](int value) {
+        furthestDistanceFromBottom = qMax(furthestDistanceFromBottom, scrollBar->maximum() - value);
+    });
+
+    session->beginAssistantResponse();
+    for (int index = 0; index < 12; ++index) {
+        session->appendAssistantTextDelta(QStringLiteral("stream line %1\n").arg(index));
+        panel.scheduleSessionRefresh();
+        QTest::qWait(40);
+    }
+
+    QTRY_VERIFY((scrollBar->maximum() - scrollBar->value()) <= 2);
+    QVERIFY2(furthestDistanceFromBottom <= 24,
+             qPrintable(QStringLiteral("scrollbar jumped too far from bottom: %1").arg(furthestDistanceFromBottom)));
 }
 
 void UiWidgetTests::floatingPanelScrollbarTintTracksPanelSurface() {

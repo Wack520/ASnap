@@ -19,6 +19,14 @@ using ais::chat::ChatRole;
         : QColor(QStringLiteral("#101214"));
 }
 
+[[nodiscard]] bool prefersDarkTone(const QColor& surfaceColor, const QString& theme) {
+    if (surfaceColor.isValid()) {
+        return surfaceColor.lightnessF() < 0.52;
+    }
+
+    return effectiveThemeName(theme) == QStringLiteral("dark");
+}
+
 [[nodiscard]] QColor autoTextColor(const QColor& surfaceColor, const QString& theme) {
     if (surfaceColor.isValid()) {
         return surfaceColor.lightnessF() < 0.52
@@ -54,13 +62,14 @@ using ais::chat::ChatRole;
                                           const int lightFactor,
                                           const int darkFactor) {
     const QColor reference = surfaceColor.isValid() ? surfaceColor : fallbackSurfaceColor(theme);
-    QColor elevated = effectiveThemeName(theme) == QStringLiteral("light")
-        ? reference.darker(lightFactor)
-        : reference.lighter(darkFactor);
+    const bool darkTone = prefersDarkTone(reference, theme);
+    QColor elevated = darkTone
+        ? reference.lighter(darkFactor)
+        : reference.darker(lightFactor);
     if (qAbs(elevated.lightness() - reference.lightness()) < 6) {
-        elevated = effectiveThemeName(theme) == QStringLiteral("light")
-            ? QColor(QStringLiteral("#eef2f7"))
-            : QColor(QStringLiteral("#181c20"));
+        elevated = darkTone
+            ? QColor(QStringLiteral("#181c20"))
+            : QColor(QStringLiteral("#eef2f7"));
     }
     elevated.setAlpha(reference.alpha());
     return elevated;
@@ -68,13 +77,13 @@ using ais::chat::ChatRole;
 
 [[nodiscard]] QColor scrollbarTrackColor(const QColor& surfaceColor, const QString& theme) {
     QColor track = elevatedSurfaceColor(surfaceColor, theme, 102, 106);
-    track.setAlpha(effectiveThemeName(theme) == QStringLiteral("light") ? 92 : 108);
+    track.setAlpha(prefersDarkTone(surfaceColor, theme) ? 108 : 92);
     return track;
 }
 
 [[nodiscard]] QColor scrollbarHandleColor(const QColor& surfaceColor, const QString& theme) {
     QColor handle = elevatedSurfaceColor(surfaceColor, theme, 118, 132);
-    handle.setAlpha(effectiveThemeName(theme) == QStringLiteral("light") ? 156 : 168);
+    handle.setAlpha(prefersDarkTone(surfaceColor, theme) ? 168 : 156);
     return handle;
 }
 
@@ -158,16 +167,24 @@ QColor mutedTextColorForTheme(const QString& theme) {
         : QColor(QStringLiteral("#9ea7b3"));
 }
 
+QColor mutedTextColorForSurface(const QColor& surfaceColor, const QString& theme) {
+    return prefersDarkTone(surfaceColor, theme)
+        ? QColor(QStringLiteral("#9ea7b3"))
+        : QColor(QStringLiteral("#5f6b7a"));
+}
+
 QColor autoBorderColor(const QColor& surfaceColor, const QString& theme) {
     if (!surfaceColor.isValid()) {
         return defaultBorderColorForTheme(theme);
     }
 
-    QColor border = effectiveThemeName(theme) == QStringLiteral("light")
-        ? surfaceColor.darker(114)
-        : surfaceColor.lighter(126);
+    QColor border = prefersDarkTone(surfaceColor, theme)
+        ? surfaceColor.lighter(126)
+        : surfaceColor.darker(114);
     if (qAbs(border.lightness() - surfaceColor.lightness()) < 14) {
-        border = defaultBorderColorForTheme(theme);
+        border = prefersDarkTone(surfaceColor, theme)
+            ? QColor(QStringLiteral("#22262b"))
+            : QColor(QStringLiteral("#d0d7de"));
     }
     border.setAlpha(255);
     return border;
@@ -198,16 +215,17 @@ QString styleSheetForTheme(const QString& theme,
                            const QColor& mutedTextColor,
                            const QColor& lineColor,
                            const int surfaceAlpha) {
+    const bool darkTone = prefersDarkTone(surfaceColor, theme);
     QColor subtleSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 104, 108);
     QColor strongerSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 108, 114);
     subtleSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.78), 255));
     strongerSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.86) + 2, 255));
     const QString subtleSurface = cssColor(subtleSurfaceColor);
     const QString strongerSurface = cssColor(strongerSurfaceColor);
-    const QString borderColor = cssColor(lineColor, effectiveThemeName(theme) == QStringLiteral("light") ? 230 : 132);
-    const QString selectionColor = effectiveThemeName(theme) == QStringLiteral("light")
-        ? QStringLiteral("#0969da")
-        : QStringLiteral("#34404d");
+    const QString borderColor = cssColor(lineColor, darkTone ? 132 : 230);
+    const QString selectionColor = darkTone
+        ? QStringLiteral("#34404d")
+        : QStringLiteral("#0969da");
     const QString scrollTrack = cssColor(scrollbarTrackColor(surfaceColor, theme));
     const QString scrollHandle = cssColor(scrollbarHandleColor(surfaceColor, theme));
 
@@ -250,13 +268,14 @@ QString historyDocumentCss(const QString& theme,
                            const QColor& mutedTextColor,
                            const QColor& lineColor,
                            const int surfaceAlpha) {
+    const bool darkTone = prefersDarkTone(surfaceColor, theme);
     QColor codeSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 106, 112);
     QColor toolbarSurfaceColor = elevatedSurfaceColor(surfaceColor, theme, 110, 118);
     codeSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.82) + 4, 255));
     toolbarSurfaceColor.setAlpha(qBound(0, qRound(surfaceAlpha * 0.88) + 6, 255));
     const QString codeSurface = cssColor(codeSurfaceColor);
     const QString toolbarSurface = cssColor(toolbarSurfaceColor);
-    const QString subtleBorder = cssColor(lineColor, effectiveThemeName(theme) == QStringLiteral("light") ? 120 : 64);
+    const QString subtleBorder = cssColor(lineColor, darkTone ? 64 : 120);
 
     return QStringLiteral(
         "body { font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; color: %1; background: transparent; }"

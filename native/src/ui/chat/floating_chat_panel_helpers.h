@@ -21,6 +21,7 @@ namespace ais::ui::floating_chat_panel_helpers {
                                       const QColor& surfaceColor,
                                       const QString& requestedColor);
 [[nodiscard]] QColor mutedTextColorForTheme(const QString& theme);
+[[nodiscard]] QColor mutedTextColorForSurface(const QColor& surfaceColor, const QString& theme);
 [[nodiscard]] QColor autoBorderColor(const QColor& surfaceColor, const QString& theme);
 [[nodiscard]] QColor resolveBorderColor(const QString& theme,
                                         const QColor& surfaceColor,
