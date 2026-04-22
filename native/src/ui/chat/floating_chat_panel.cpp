@@ -473,7 +473,10 @@ void FloatingChatPanel::refreshHistory() {
     }
     html += QStringLiteral("</body></html>");
 
+    const bool updatesWereEnabled = historyView_->updatesEnabled();
+    historyView_->setUpdatesEnabled(false);
     historyView_->setHtml(html);
+    historyView_->setUpdatesEnabled(updatesWereEnabled);
     if (verticalScrollBar == nullptr) {
         return;
     }
@@ -489,6 +492,10 @@ void FloatingChatPanel::refreshHistory() {
 void FloatingChatPanel::refreshReasoning() {
     if (!session_) {
         reasoningExpanded_ = false;
+        cachedReasoningKey_.clear();
+        cachedReasoningDocumentHtml_.clear();
+        cachedReasoningCopyPayloads_.clear();
+        reasoningCopyCount_ = 0;
         reasoningToggleButton_->hide();
         {
             const QSignalBlocker blocker(reasoningToggleButton_);
@@ -504,6 +511,10 @@ void FloatingChatPanel::refreshReasoning() {
     const QString reasoning = session_->latestAssistantReasoning();
     if (reasoning.trimmed().isEmpty()) {
         reasoningExpanded_ = false;
+        cachedReasoningKey_.clear();
+        cachedReasoningDocumentHtml_.clear();
+        cachedReasoningCopyPayloads_.clear();
+        reasoningCopyCount_ = 0;
         reasoningToggleButton_->hide();
         {
             const QSignalBlocker blocker(reasoningToggleButton_);
@@ -516,10 +527,38 @@ void FloatingChatPanel::refreshReasoning() {
         return;
     }
 
-    RenderedMarkdown rendered = renderMarkdownWithCodeTools(reasoning, currentTheme_, &copyCounter_);
-    for (auto it = rendered.copyPayloads.cbegin(); it != rendered.copyPayloads.cend(); ++it) {
+    const QString reasoningCacheKey = QStringLiteral("%1|%2|%3|%4|%5|%6")
+        .arg(currentTheme_,
+             currentPanelColor_,
+             currentTextColor_,
+             currentBorderColor_,
+             QString::number(currentSurfaceAlpha_),
+             reasoning);
+    const bool reasoningChanged = cachedReasoningKey_ != reasoningCacheKey;
+    if (reasoningChanged) {
+        int reasoningCopyCounter = 0;
+        const RenderedMarkdown rendered =
+            renderMarkdownWithCodeTools(reasoning, currentTheme_, &reasoningCopyCounter);
+        cachedReasoningCopyPayloads_ = rendered.copyPayloads;
+        reasoningCopyCount_ = reasoningCopyCounter;
+        cachedReasoningDocumentHtml_ =
+            QStringLiteral("<html><head><style>%1</style></head><body>%2</body></html>")
+                .arg(helpers::historyDocumentCss(currentTheme_,
+                                                 helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
+                                                 QColor(currentTextColor_),
+                                                 helpers::mutedTextColorForTheme(currentTheme_),
+                                                 helpers::resolveBorderColor(
+                                                     currentTheme_,
+                                                     helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
+                                                     currentBorderColor_),
+                                                 currentSurfaceAlpha_),
+                     rendered.html);
+        cachedReasoningKey_ = reasoningCacheKey;
+    }
+    for (auto it = cachedReasoningCopyPayloads_.cbegin(); it != cachedReasoningCopyPayloads_.cend(); ++it) {
         copyPayloads_.insert(it.key(), it.value());
     }
+    copyCounter_ = reasoningCopyCount_;
 
     reasoningToggleButton_->show();
     {
@@ -530,17 +569,12 @@ void FloatingChatPanel::refreshReasoning() {
     reasoningToggleButton_->setText(reasoningExpanded_ ? QStringLiteral("收起思考")
                                                        : QStringLiteral("展开思考"));
 
-    reasoningView_->setHtml(QStringLiteral("<html><head><style>%1</style></head><body>%2</body></html>")
-                                .arg(helpers::historyDocumentCss(currentTheme_,
-                                                                 helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
-                                                                 QColor(currentTextColor_),
-                                                                 helpers::mutedTextColorForTheme(currentTheme_),
-                                                                 helpers::resolveBorderColor(
-                                                                     currentTheme_,
-                                                                     helpers::resolveSurfaceColor(currentTheme_, currentPanelColor_),
-                                                                     currentBorderColor_),
-                                                                 currentSurfaceAlpha_),
-                                     rendered.html));
+    if (reasoningChanged) {
+        const bool updatesWereEnabled = reasoningView_->updatesEnabled();
+        reasoningView_->setUpdatesEnabled(false);
+        reasoningView_->setHtml(cachedReasoningDocumentHtml_);
+        reasoningView_->setUpdatesEnabled(updatesWereEnabled);
+    }
     reasoningView_->setVisible(reasoningExpanded_);
 }
 

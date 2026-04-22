@@ -92,12 +92,16 @@ private:
     QString currentBorderColor_ = QStringLiteral("#000000");
     int currentSurfaceAlpha_ = 242;
     int copyCounter_ = 0;
+    int reasoningCopyCount_ = 0;
     QHash<QString, QString> copyPayloads_;
+    QHash<QString, QString> cachedReasoningCopyPayloads_;
     std::function<bool(const QUrl&)> externalUrlOpener_;
     InteractionMode interactionMode_ = InteractionMode::None;
     QPoint interactionStartGlobal_;
     QRect interactionStartGeometry_;
     QTimer* refreshTimer_ = nullptr;
+    QString cachedReasoningKey_;
+    QString cachedReasoningDocumentHtml_;
     QLabel* statusLabel_ = nullptr;
     QToolButton* reasoningToggleButton_ = nullptr;
     QToolButton* minimizeButton_ = nullptr;

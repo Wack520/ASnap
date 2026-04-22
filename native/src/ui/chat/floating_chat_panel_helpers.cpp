@@ -104,7 +104,11 @@ QString htmlForMessage(const ais::chat::ChatMessage& message,
                        QHash<QString, QString>* copyPayloads) {
     const QString role = message.role == ChatRole::Assistant ? QStringLiteral("AI") : QStringLiteral("你");
 
-    RenderedMarkdown rendered = renderMarkdownWithCodeTools(message.text, theme, copyCounter);
+    const MarkdownRenderMode renderMode =
+        message.role == ChatRole::Assistant && message.streaming
+        ? MarkdownRenderMode::PlainTextPreview
+        : MarkdownRenderMode::Full;
+    RenderedMarkdown rendered = renderMarkdownWithCodeTools(message.text, theme, copyCounter, renderMode);
     QString body = rendered.html;
     if (copyPayloads != nullptr) {
         for (auto it = rendered.copyPayloads.cbegin(); it != rendered.copyPayloads.cend(); ++it) {
@@ -268,6 +272,7 @@ QString historyDocumentCss(const QString& theme,
         ".body table { margin: 8px 0; border-collapse: collapse; }"
         ".body th, .body td { border: 1px solid %3; padding: 6px 8px; }"
         ".body a { color: %1; text-decoration: underline; }"
+        ".streaming-plain { margin: 0 0 8px 0; white-space: pre-wrap; word-break: break-word; line-height: 1.65; }"
         ".code-card { margin: 8px 0; border: 1px solid %6; border-radius: 10px; overflow: hidden; background: %4; }"
         ".code-toolbar { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; background: %5; border-bottom: 1px solid %6; }"
         ".code-body { background: %4; border-top: 1px solid %6; padding: 10px 12px; }"

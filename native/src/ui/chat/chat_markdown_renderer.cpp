@@ -1,7 +1,9 @@
 #include "ui/chat/chat_markdown_renderer.h"
 
 #include <QRegularExpression>
+#include <QTextBlock>
 #include <QTextDocument>
+#include <QTextFragment>
 
 #include "ui/chat/code_syntax_highlighter.h"
 
@@ -30,12 +32,58 @@ namespace {
     return extractBodyHtml(document.toHtml());
 }
 
+[[nodiscard]] QString plainTextPreviewHtml(QString markdown) {
+    if (markdown.isEmpty()) {
+        return {};
+    }
+
+    markdown.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    markdown.replace(QChar::CarriageReturn, QChar::LineFeed);
+    return QStringLiteral("<div class=\"streaming-plain\">%1</div>")
+        .arg(markdown.toHtmlEscaped());
+}
+
 [[nodiscard]] QString languageLabel(QString language) {
     language = language.trimmed();
     if (language.isEmpty()) {
         return QStringLiteral("code");
     }
     return language.toLower();
+}
+
+[[nodiscard]] QString inlineStyleForFragment(const QTextCharFormat& format) {
+    QStringList rules;
+    if (format.foreground().style() != Qt::NoBrush) {
+        const QColor color = format.foreground().color();
+        if (color.isValid()) {
+            rules.append(QStringLiteral("color:%1").arg(color.name()));
+        }
+    }
+    if (format.fontWeight() >= QFont::Bold) {
+        rules.append(QStringLiteral("font-weight:700"));
+    }
+    if (format.fontItalic()) {
+        rules.append(QStringLiteral("font-style:italic"));
+    }
+    return rules.join(QStringLiteral(";"));
+}
+
+[[nodiscard]] QString fragmentHtml(const QTextFragment& fragment) {
+    if (!fragment.isValid()) {
+        return {};
+    }
+
+    const QString text = fragment.text().toHtmlEscaped();
+    if (text.isEmpty()) {
+        return {};
+    }
+
+    const QString style = inlineStyleForFragment(fragment.charFormat());
+    if (style.isEmpty()) {
+        return text;
+    }
+
+    return QStringLiteral("<span style=\"%1\">%2</span>").arg(style, text);
 }
 
 [[nodiscard]] QString highlightedCodeHtml(const QString& code,
@@ -48,7 +96,19 @@ namespace {
         language,
         theme != QStringLiteral("light"));
     Q_UNUSED(highlighter);
-    return extractBodyHtml(document.toHtml());
+    highlighter.rehighlight();
+
+    QString html = QStringLiteral("<pre><code>");
+    for (QTextBlock block = document.begin(); block.isValid(); block = block.next()) {
+        for (QTextBlock::iterator it = block.begin(); !it.atEnd(); ++it) {
+            html += fragmentHtml(it.fragment());
+        }
+        if (block.next().isValid()) {
+            html += QChar::LineFeed;
+        }
+    }
+    html += QStringLiteral("</code></pre>");
+    return html;
 }
 
 [[nodiscard]] QString codeBlockHtml(const QString& blockId,
@@ -71,8 +131,13 @@ namespace {
 
 RenderedMarkdown renderMarkdownWithCodeTools(const QString& markdown,
                                              const QString& theme,
-                                             int* copyCounter) {
+                                             int* copyCounter,
+                                             const MarkdownRenderMode mode) {
     RenderedMarkdown rendered;
+    if (mode == MarkdownRenderMode::PlainTextPreview) {
+        rendered.html = plainTextPreviewHtml(markdown);
+        return rendered;
+    }
 
     static const QRegularExpression fencePattern(
         QStringLiteral(R"(```([^\n`]*)\n([\s\S]*?)\n?```)")

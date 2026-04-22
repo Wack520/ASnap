@@ -25,6 +25,7 @@
 #include "config/app_config.h"
 #include "config/provider_preset.h"
 #include "config/provider_protocol.h"
+#include "ui/chat/chat_markdown_renderer.h"
 #include "ui/chat/floating_chat_panel.h"
 #include "ui/chat/floating_chat_panel_helpers.h"
 #include "ui/settings/settingsdialog.h"
@@ -107,6 +108,8 @@ private slots:
     void reasoningPanelUsesScrollableCompactHeight();
     void assistantMarkdownRendersWithoutLiteralFenceMarkers();
     void historyCssUsesDedicatedCodeBodyContainer();
+    void renderedCodeBlocksUseCleanPreMarkup();
+    void streamingAssistantMessagesUseLightweightPreviewMarkup();
     void assistantMarkdownLinksOpenThroughDesktopServices();
     void streamingBadgeRequiresVisibleAssistantText();
     void streamingBadgeAppearsAfterAssistantTextStarts();
@@ -1450,6 +1453,37 @@ void UiWidgetTests::historyCssUsesDedicatedCodeBodyContainer() {
 
     QVERIFY(css.contains(QStringLiteral(".code-body")));
     QVERIFY(css.contains(QStringLiteral("border-top")));
+}
+
+void UiWidgetTests::renderedCodeBlocksUseCleanPreMarkup() {
+    int copyCounter = 0;
+    const ais::ui::RenderedMarkdown rendered = ais::ui::renderMarkdownWithCodeTools(
+        QStringLiteral("```python\nimport argparse\nprint('ok')\n```"),
+        QStringLiteral("dark"),
+        &copyCounter);
+
+    QVERIFY(rendered.html.contains(QStringLiteral("<pre><code>")));
+    QVERIFY(!rendered.html.contains(QStringLiteral("<p style="), Qt::CaseInsensitive));
+    QVERIFY(!rendered.html.contains(QStringLiteral("-qt-"), Qt::CaseInsensitive));
+}
+
+void UiWidgetTests::streamingAssistantMessagesUseLightweightPreviewMarkup() {
+    ais::chat::ChatMessage message;
+    message.role = ais::chat::ChatRole::Assistant;
+    message.text = QStringLiteral("```python\nimport argparse\nprint('ok')\n```");
+    message.streaming = true;
+
+    int copyCounter = 0;
+    QHash<QString, QString> copyPayloads;
+    const QString html = ais::ui::floating_chat_panel_helpers::htmlForMessage(
+        message,
+        QStringLiteral("dark"),
+        &copyCounter,
+        &copyPayloads);
+
+    QVERIFY(html.contains(QStringLiteral("```python")));
+    QVERIFY(!html.contains(QStringLiteral("code-card")));
+    QVERIFY(copyPayloads.isEmpty());
 }
 
 void UiWidgetTests::assistantMarkdownLinksOpenThroughDesktopServices() {

@@ -10,8 +10,15 @@ struct RenderedMarkdown {
     QHash<QString, QString> copyPayloads;
 };
 
+enum class MarkdownRenderMode {
+    Full,
+    PlainTextPreview,
+};
+
 [[nodiscard]] RenderedMarkdown renderMarkdownWithCodeTools(const QString& markdown,
                                                            const QString& theme,
-                                                           int* copyCounter);
+                                                           int* copyCounter,
+                                                           MarkdownRenderMode mode =
+                                                               MarkdownRenderMode::Full);
 
 }  // namespace ais::ui
