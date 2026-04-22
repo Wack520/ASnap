@@ -11,6 +11,7 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QTextBrowser>
 #include <QToolButton>
 
@@ -53,6 +54,7 @@ public:
     [[nodiscard]] QComboBox* modelField() const noexcept { return modelField_; }
     [[nodiscard]] QToolButton* modelPopupButton() const noexcept { return modelPopupButton_; }
     [[nodiscard]] QPushButton* fetchModelsButton() const noexcept { return fetchModelsButton_; }
+    [[nodiscard]] QComboBox* captureModeField() const noexcept { return captureModeField_; }
     [[nodiscard]] QKeySequenceEdit* aiShortcutField() const noexcept { return aiShortcutField_; }
     [[nodiscard]] QKeySequenceEdit* screenshotShortcutField() const noexcept { return screenshotShortcutField_; }
     [[nodiscard]] QComboBox* themeField() const noexcept;
@@ -84,6 +86,10 @@ private:
     void handleProtocolChanged();
     void refreshModelActionUi();
     [[nodiscard]] int indexForProtocol(ais::config::ProviderProtocol protocol) const;
+    void preserveScrollPosition();
+    void beginScrollAnchorIfNeeded();
+    void enforceScrollAnchorNow();
+    void restoreScrollPositionLater(bool releaseScrollAnchor = false);
 
     config::AppConfig initialConfig_;
     ActionMode actionMode_ = ActionMode::None;
@@ -97,6 +103,7 @@ private:
     QToolButton* modelPopupButton_ = nullptr;
     QPushButton* fetchModelsButton_ = nullptr;
     QLabel* modelActionStatusLabel_ = nullptr;
+    QComboBox* captureModeField_ = nullptr;
     QKeySequenceEdit* aiShortcutField_ = nullptr;
     QKeySequenceEdit* screenshotShortcutField_ = nullptr;
     SettingsDialogAppearanceSection* appearanceSection_ = nullptr;
@@ -104,6 +111,10 @@ private:
     QCheckBox* launchAtLoginCheckBox_ = nullptr;
     QPushButton* testConnectionButton_ = nullptr;
     QPushButton* testImageButton_ = nullptr;
+    QScrollArea* scrollArea_ = nullptr;
+    int preservedScrollValue_ = 0;
+    int scrollAnchorValue_ = 0;
+    bool scrollAnchorActive_ = false;
 };
 
 }  // namespace ais::ui

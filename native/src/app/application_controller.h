@@ -4,9 +4,10 @@
 #include <memory>
 
 #include <QObject>
+#include <QList>
 #include <QStringList>
 
-#include "ai/ai_client.h"
+#include "app/conversation_request_controller.h"
 #include "app/request_guard.h"
 #include "config/app_config.h"
 
@@ -54,13 +55,8 @@ public:
         PlainScreenshot,
     };
 
-    using RequestStreamStarter = std::function<bool(const config::ProviderProfile&,
-                                                    const QList<chat::ChatMessage>&,
-                                                    ai::AiClient::DeltaHandler,
-                                                    ai::AiClient::DeltaHandler,
-                                                    ai::AiClient::CompletionHandler,
-                                                    ai::AiClient::FailureHandler,
-                                                    int retryAttempt)>;
+    using RequestStreamStarter = ConversationRequestController::RequestStreamStarter;
+    using ImageEncoder = std::function<QByteArray(const QPixmap&)>;
 
     explicit ApplicationController(QObject* parent = nullptr);
     ~ApplicationController() override;
@@ -69,18 +65,23 @@ public:
 
     void forceBusyStateForTest(BusyState state);
     [[nodiscard]] bool canStartCaptureForTest() const;
+    void loadConfigForTest(const config::AppConfig& config);
     void ensureSettingsDialogForTest();
     void ensureChatPanelForTest();
     void closeSettingsDialogForTest();
     void closeChatPanelForTest();
+    [[nodiscard]] capture::CaptureMode captureModeForTest() const;
+    [[nodiscard]] ui::SettingsDialog* settingsDialogForTest() const noexcept { return settingsDialog_; }
     void completeProviderTestForTest(bool imageMode, bool success, const QString& textOrError);
     [[nodiscard]] QString lastStatusTextForTest() const { return lastStatusText_; }
     void setRequestStreamStarterForTest(RequestStreamStarter starter);
+    void setImageEncoderForTest(ImageEncoder encoder) { imageEncoderForTest_ = std::move(encoder); }
+    [[nodiscard]] bool isChatPanelVisibleForTest() const noexcept;
     void setEmptyRetryDelayOverrideForTest(int delayMs);
     [[nodiscard]] int emptyRetryDelayMsForTest(bool hasImageContext, int emptyRetryAttempt) const;
     void seedConversationForTest(const QString& initialUserText);
     void followUpRequestedForTest(const QString& text);
-    [[nodiscard]] int queuedFollowUpCountForTest() const noexcept { return queuedFollowUpTexts_.size(); }
+    [[nodiscard]] int queuedFollowUpCountForTest() const noexcept;
     [[nodiscard]] QString queuedFollowUpTextForTest(int index) const;
     [[nodiscard]] int messageCountForTest() const;
     [[nodiscard]] QString lastUserMessageTextForTest() const;
@@ -110,6 +111,7 @@ private:
     void createTray();
     void loadConfig();
     void applyConfigDefaults();
+    void applyCaptureModeToService();
     void applyAppearance();
     [[nodiscard]] bool registerHotkeys();
 
@@ -119,14 +121,6 @@ private:
     void handleConfirmedCapture(const ais::capture::CaptureSelection& selection);
     void handlePlainScreenshotCapture(const ais::capture::CaptureSelection& selection);
     void beginSessionFromSelection(const ais::capture::CaptureSelection& selection);
-    [[nodiscard]] bool sendCurrentSessionRequest(
-        const QString& busyStatus,
-        int emptyRetryAttempt = 0,
-        const config::ProviderProfile* requestProfileOverride = nullptr,
-        bool allowAssetUploadFallback = true);
-    void queueFollowUp(const QString& text);
-    void scheduleQueuedFollowUpSend();
-    void handleRequestCompleted(int emptyRetryAttempt);
     void fetchProviderModels();
     void runProviderTest(bool imageMode);
     void applySettingsFromDialog();
@@ -136,7 +130,6 @@ private:
     [[nodiscard]] QByteArray encodePng(const QPixmap& pixmap) const;
     [[nodiscard]] bool applyLaunchAtLoginPreference() const;
     [[nodiscard]] QString defaultFirstPrompt() const;
-    [[nodiscard]] int emptyRetryDelayMs(bool hasImageContext, int emptyRetryAttempt) const;
     [[nodiscard]] QString statusForState(BusyState state) const;
     void rememberWindowSizes();
     [[nodiscard]] bool saveConfigSnapshot() const;
@@ -149,7 +142,7 @@ private:
     std::unique_ptr<capture::DesktopCaptureService> captureService_;
     std::unique_ptr<ai::AiClient> aiClient_;
     std::unique_ptr<ai::ProviderTestRunner> providerTestRunner_;
-    std::shared_ptr<chat::ChatSession> currentSession_;
+    std::unique_ptr<ConversationRequestController> requestController_;
 
     QSystemTrayIcon* trayIcon_ = nullptr;
     QMenu* trayMenu_ = nullptr;
@@ -162,14 +155,12 @@ private:
     std::unique_ptr<platform::windows::StartupRegistry> startupRegistry_;
     ui::SettingsDialog* settingsDialog_ = nullptr;
     ui::FloatingChatPanel* chatPanel_ = nullptr;
-    capture::CaptureOverlay* overlay_ = nullptr;
+    QList<capture::CaptureOverlay*> overlays_;
 
     bool initialized_ = false;
     QString lastStatusText_ = QStringLiteral("Ready");
-    QStringList queuedFollowUpTexts_;
-    RequestStreamStarter requestStreamStarter_;
     CaptureLaunchMode activeCaptureMode_ = CaptureLaunchMode::AiAssistant;
-    int emptyRetryDelayOverrideMs_ = -1;
+    ImageEncoder imageEncoderForTest_;
 };
 
 }  // namespace ais::app

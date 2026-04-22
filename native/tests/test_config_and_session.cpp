@@ -5,6 +5,7 @@
 #include <QtTest/QtTest>
 
 #include "ai/sample_image_factory.h"
+#include "capture/capture_mode.h"
 #include "chat/chat_session.h"
 #include "config/app_config.h"
 #include "config/config_store.h"
@@ -21,6 +22,7 @@ class ConfigAndSessionTests final : public QObject {
 
 private slots:
     void configRoundTripsActiveProfile();
+    void configRoundTripsCaptureMode();
     void configRoundTripsCustomFirstPrompt();
     void configMigratesLegacyDefaultFirstPromptV1();
     void configMigratesLegacyDefaultFirstPromptV2();
@@ -75,6 +77,22 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     QCOMPARE(loaded.chatPanelSize, expected.chatPanelSize);
     QCOMPARE(loaded.settingsDialogSize, expected.settingsDialogSize);
     QCOMPARE(loaded.launchAtLogin, expected.launchAtLogin);
+}
+
+void ConfigAndSessionTests::configRoundTripsCaptureMode() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    ConfigStore store(tempDir.filePath("app-config.json"));
+
+    AppConfig expected;
+    expected.captureMode = ais::capture::CaptureMode::HdrCompatible;
+
+    QVERIFY(store.save(expected));
+
+    const AppConfig loaded = store.load();
+    QCOMPARE(static_cast<int>(loaded.captureMode),
+             static_cast<int>(expected.captureMode));
 }
 
 void ConfigAndSessionTests::configRoundTripsCustomFirstPrompt() {

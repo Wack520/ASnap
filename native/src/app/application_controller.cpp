@@ -1,6 +1,7 @@
 #include "app/application_controller.h"
 
 #include <memory>
+#include <utility>
 
 #include <QAction>
 #include <QApplication>
@@ -13,6 +14,7 @@
 #include <QGuiApplication>
 #include <QMenu>
 #include <QPixmap>
+#include <QRegularExpression>
 #include <QScreen>
 #include <QStandardPaths>
 #include <QSystemTrayIcon>
@@ -24,7 +26,6 @@
 #include "capture/capture_overlay.h"
 #include "capture/capture_selection.h"
 #include "capture/desktop_capture_service.h"
-#include "chat/chat_session.h"
 #include "config/config_store.h"
 #include "config/provider_preset.h"
 #include "platform/windows/global_hotkey_host.h"
@@ -37,8 +38,6 @@
 namespace ais::app {
 
 namespace {
-
-constexpr int kMaxEmptyResponseRetries = 3;
 
 [[nodiscard]] QString defaultConfigPath() {
     QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -74,42 +73,80 @@ constexpr int kMaxEmptyResponseRetries = 3;
     return QGuiApplication::primaryScreen();
 }
 
-[[nodiscard]] bool messagesContainImage(const QList<chat::ChatMessage>& messages) {
-    for (const chat::ChatMessage& message : messages) {
-        if (message.hasImage()) {
-            return true;
+[[nodiscard]] QString friendlyProviderTestFailure(QString error) {
+    error = error.trimmed();
+    if (error.contains(QStringLiteral("HTTP 429"), Qt::CaseInsensitive)) {
+        return QStringLiteral("服务当前限流（HTTP 429），请稍后再试，或更换模型 / 线路。");
+    }
+
+    static const QRegularExpression messagePattern(
+        QStringLiteral("\"message\"\\s*:\\s*\"([^\"]+)\""));
+    const QRegularExpressionMatch match = messagePattern.match(error);
+    if (match.hasMatch()) {
+        const QString upstreamMessage = match.captured(1).trimmed();
+        if (!upstreamMessage.isEmpty()) {
+            return upstreamMessage;
         }
     }
-    return false;
-}
 
-[[nodiscard]] int defaultEmptyRetryDelayMs(const bool hasImageContext,
-                                           const int emptyRetryAttempt) {
-    if (!hasImageContext) {
-        return 80;
-    }
-
-    switch (qMax(0, emptyRetryAttempt)) {
-    case 0:
-        return 1200;
-    case 1:
-        return 2500;
-    default:
-        return 5000;
-    }
-}
-
-[[nodiscard]] bool isAssetUploadFailure(const QString& error) {
-    return error.contains(QStringLiteral("Asset upload returned 400"), Qt::CaseInsensitive) ||
-           error.contains(QStringLiteral("asset upload"), Qt::CaseInsensitive);
+    return error;
 }
 
 }  // namespace
 
 ApplicationController::ApplicationController(QObject* parent)
-    : QObject(parent) {}
+    : QObject(parent) {
+    ConversationRequestController::Hooks hooks;
+    hooks.activeProfileProvider = [this]() { return config_.activeProfile; };
+    hooks.requestStreamStarter = [this](const config::ProviderProfile& profile,
+                                        const QList<chat::ChatMessage>& messages,
+                                        ai::AiClient::DeltaHandler onTextDelta,
+                                        ai::AiClient::DeltaHandler onReasoningDelta,
+                                        ai::AiClient::CompletionHandler onComplete,
+                                        ai::AiClient::FailureHandler onFailure,
+                                        const int retryAttempt) {
+        return aiClient_ != nullptr &&
+               aiClient_->sendConversationStream(profile,
+                                                 messages,
+                                                 std::move(onTextDelta),
+                                                 std::move(onReasoningDelta),
+                                                 std::move(onComplete),
+                                                 std::move(onFailure),
+                                                 retryAttempt);
+    };
+    hooks.cancelActiveRequest = [this]() {
+        if (aiClient_ != nullptr) {
+            aiClient_->cancelActiveRequest();
+            return;
+        }
+        guard_.leave(BusyState::RequestInFlight);
+    };
+    hooks.bindSession = [this](const std::shared_ptr<chat::ChatSession>& session) {
+        if (chatPanel_ != nullptr) {
+            chatPanel_->bindSession(session);
+        }
+    };
+    hooks.scheduleSessionRefresh = [this]() {
+        if (chatPanel_ != nullptr) {
+            chatPanel_->scheduleSessionRefresh();
+        }
+    };
+    hooks.setPanelBusy = [this](const bool busy, const QString& status) {
+        if (chatPanel_ != nullptr) {
+            chatPanel_->setBusy(busy, status);
+        }
+    };
+    hooks.syncStatus = [this](const QString& status) {
+        syncBusyUi(status);
+    };
+    hooks.statusForState = [this](const BusyState state) {
+        return statusForState(state);
+    };
+    requestController_ = std::make_unique<ConversationRequestController>(guard_, std::move(hooks), this);
+}
 
 ApplicationController::~ApplicationController() {
+    requestController_.reset();
     rememberWindowSizes();
     (void)saveConfigSnapshot();
     clearOverlay();
@@ -154,6 +191,7 @@ bool ApplicationController::initialize() {
     ensureServiceOwnership();
     loadConfig();
     applyConfigDefaults();
+    applyCaptureModeToService();
     (void)applyLaunchAtLoginPreference();
     ensureChatPanel();
     createTray();
@@ -195,6 +233,13 @@ bool ApplicationController::canStartCaptureForTest() const {
            guard_.state() != BusyState::TestingProvider;
 }
 
+void ApplicationController::loadConfigForTest(const config::AppConfig& config) {
+    ensureServiceOwnership();
+    config_ = config;
+    applyConfigDefaults();
+    applyCaptureModeToService();
+}
+
 void ApplicationController::ensureSettingsDialogForTest() {
     ensureSettingsDialog();
 }
@@ -224,6 +269,14 @@ void ApplicationController::closeChatPanelForTest() {
     QCoreApplication::processEvents();
 }
 
+capture::CaptureMode ApplicationController::captureModeForTest() const {
+    if (captureService_ != nullptr) {
+        return captureService_->captureMode();
+    }
+
+    return config_.captureMode;
+}
+
 void ApplicationController::completeProviderTestForTest(const bool imageMode,
                                                         const bool success,
                                                         const QString& textOrError) {
@@ -236,27 +289,37 @@ void ApplicationController::completeProviderTestForTest(const bool imageMode,
 }
 
 void ApplicationController::setRequestStreamStarterForTest(RequestStreamStarter starter) {
-    requestStreamStarter_ = std::move(starter);
+    if (requestController_ != nullptr) {
+        requestController_->setRequestStreamStarterForTest(std::move(starter));
+    }
+}
+
+bool ApplicationController::isChatPanelVisibleForTest() const noexcept {
+    return chatPanel_ != nullptr && chatPanel_->isVisible();
 }
 
 void ApplicationController::setEmptyRetryDelayOverrideForTest(const int delayMs) {
-    emptyRetryDelayOverrideMs_ = delayMs;
+    if (requestController_ != nullptr) {
+        requestController_->setEmptyRetryDelayOverrideForTest(delayMs);
+    }
 }
 
 int ApplicationController::emptyRetryDelayMsForTest(const bool hasImageContext,
                                                     const int emptyRetryAttempt) const {
-    return emptyRetryDelayMs(hasImageContext, emptyRetryAttempt);
+    if (requestController_ == nullptr) {
+        return -1;
+    }
+    return requestController_->emptyRetryDelayMsForTest(hasImageContext, emptyRetryAttempt);
 }
 
 void ApplicationController::seedConversationForTest(const QString& initialUserText) {
-    currentSession_ = std::make_shared<chat::ChatSession>();
-    currentSession_->beginWithCapture(QByteArray("png-image"));
-    currentSession_->addUserText(initialUserText);
-    queuedFollowUpTexts_.clear();
+    if (requestController_ == nullptr) {
+        return;
+    }
 
     ensureChatPanel();
+    requestController_->beginSession(QByteArray("png-image"), initialUserText);
     if (chatPanel_ != nullptr) {
-        chatPanel_->bindSession(currentSession_);
         chatPanel_->setBusy(false, QStringLiteral("Ready"));
     }
     syncBusyUi(QStringLiteral("Ready"));
@@ -266,47 +329,46 @@ void ApplicationController::followUpRequestedForTest(const QString& text) {
     onFollowUpRequested(text);
 }
 
+int ApplicationController::queuedFollowUpCountForTest() const noexcept {
+    if (requestController_ == nullptr) {
+        return 0;
+    }
+    return requestController_->queuedFollowUpCountForTest();
+}
+
 QString ApplicationController::queuedFollowUpTextForTest(const int index) const {
-    if (index < 0 || index >= queuedFollowUpTexts_.size()) {
+    if (requestController_ == nullptr) {
         return {};
     }
-    return queuedFollowUpTexts_.at(index);
+    return requestController_->queuedFollowUpTextForTest(index);
 }
 
 int ApplicationController::messageCountForTest() const {
-    return currentSession_ == nullptr ? 0 : currentSession_->messages().size();
+    if (requestController_ == nullptr) {
+        return 0;
+    }
+    return requestController_->messageCountForTest();
 }
 
 QString ApplicationController::lastUserMessageTextForTest() const {
-    if (currentSession_ == nullptr) {
+    if (requestController_ == nullptr) {
         return {};
     }
-
-    const auto& messages = currentSession_->messages();
-    for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
-        if (it->role == chat::ChatRole::User && !it->text.isEmpty()) {
-            return it->text;
-        }
-    }
-    return {};
+    return requestController_->lastUserMessageTextForTest();
 }
 
 QString ApplicationController::lastAssistantMessageTextForTest() const {
-    if (currentSession_ == nullptr || currentSession_->messages().isEmpty()) {
+    if (requestController_ == nullptr) {
         return {};
     }
-
-    const auto& messages = currentSession_->messages();
-    for (auto it = messages.crbegin(); it != messages.crend(); ++it) {
-        if (it->role == chat::ChatRole::Assistant) {
-            return it->text;
-        }
-    }
-    return {};
+    return requestController_->lastAssistantMessageTextForTest();
 }
 
 QString ApplicationController::lastAssistantReasoningForTest() const {
-    return currentSession_ == nullptr ? QString() : currentSession_->latestAssistantReasoning();
+    if (requestController_ == nullptr) {
+        return {};
+    }
+    return requestController_->lastAssistantReasoningForTest();
 }
 
 void ApplicationController::confirmCaptureForTest(const capture::CaptureSelection& selection, const bool sendToAi) {
@@ -361,16 +423,50 @@ void ApplicationController::startCaptureWorkflow(const CaptureLaunchMode mode) {
     }
 
     clearOverlay();
-    overlay_ = new capture::CaptureOverlay(snapshot);
-    connect(overlay_, &capture::CaptureOverlay::captureConfirmed,
-            this, &ApplicationController::onCaptureConfirmed);
-    connect(overlay_, &capture::CaptureOverlay::captureCancelled,
-            this, &ApplicationController::onCaptureCancelled);
-    connect(overlay_, &QObject::destroyed, this, [this]() { overlay_ = nullptr; });
 
-    overlay_->show();
-    overlay_->activateWindow();
-    overlay_->raise();
+    const QList<capture::ScreenMapping> screenMappings =
+        snapshot.screenMappings.isEmpty()
+            ? QList<capture::ScreenMapping>{
+                  capture::ScreenMapping{
+                      .overlayRect = snapshot.overlayGeometry.isValid()
+                                         ? snapshot.overlayGeometry
+                                         : snapshot.virtualGeometry,
+                      .virtualRect = snapshot.virtualGeometry,
+                      .devicePixelRatio = 1.0,
+                  }}
+            : snapshot.screenMappings;
+
+    capture::CaptureOverlay* primaryOverlay = nullptr;
+    for (const capture::ScreenMapping& mapping : screenMappings) {
+        const capture::DesktopSnapshot screenSnapshot =
+            capture::DesktopCaptureService::snapshotForScreen(snapshot, mapping);
+        if (screenSnapshot.displayImage.isNull() || screenSnapshot.captureImage.isNull()) {
+            continue;
+        }
+
+        auto* overlay = new capture::CaptureOverlay(screenSnapshot);
+        connect(overlay, &capture::CaptureOverlay::captureConfirmed,
+                this, &ApplicationController::onCaptureConfirmed);
+        connect(overlay, &capture::CaptureOverlay::captureCancelled,
+                this, &ApplicationController::onCaptureCancelled);
+        connect(overlay, &QObject::destroyed, this, [this, overlay]() { overlays_.removeAll(overlay); });
+
+        overlays_.append(overlay);
+        if (primaryOverlay == nullptr) {
+            primaryOverlay = overlay;
+        }
+
+        overlay->show();
+        overlay->raise();
+    }
+
+    if (primaryOverlay == nullptr) {
+        guard_.leave(BusyState::Capturing);
+        syncBusyUi(QStringLiteral("Failed to capture desktop"));
+        return;
+    }
+
+    primaryOverlay->activateWindow();
 }
 
 void ApplicationController::openSettings() {
@@ -393,7 +489,9 @@ void ApplicationController::onCaptureCancelled() {
     guard_.leave(BusyState::Capturing);
     syncBusyUi(QStringLiteral("Capture cancelled"));
 
-    if (chatPanel_ != nullptr && currentSession_) {
+    if (chatPanel_ != nullptr &&
+        requestController_ != nullptr &&
+        requestController_->hasSession()) {
         chatPanel_->show();
         chatPanel_->raise();
         chatPanel_->activateWindow();
@@ -401,32 +499,8 @@ void ApplicationController::onCaptureCancelled() {
 }
 
 void ApplicationController::onFollowUpRequested(const QString& text) {
-    if (currentSession_ == nullptr) {
-        return;
-    }
-
-    const QString trimmedText = text.trimmed();
-    if (trimmedText.isEmpty()) {
-        return;
-    }
-
-    if (guard_.state() == BusyState::RequestInFlight) {
-        queueFollowUp(trimmedText);
-        return;
-    }
-    if (guard_.isBusy()) {
-        return;
-    }
-
-    currentSession_->addUserText(trimmedText);
-    if (chatPanel_ != nullptr) {
-        chatPanel_->bindSession(currentSession_);
-    }
-
-    if (!sendCurrentSessionRequest(QStringLiteral("Sending follow-up..."))) {
-        if (chatPanel_ != nullptr) {
-            chatPanel_->bindSession(currentSession_);
-        }
+    if (requestController_ != nullptr) {
+        requestController_->onFollowUpRequested(text);
     }
 }
 
@@ -493,6 +567,9 @@ void ApplicationController::ensureServiceOwnership() {
     if (captureService_ == nullptr) {
         captureService_ = std::make_unique<capture::DesktopCaptureService>();
     }
+    if (captureService_ != nullptr) {
+        captureService_->setCaptureMode(config_.captureMode);
+    }
 
     if (aiClient_ == nullptr) {
         aiClient_ = std::make_unique<ai::AiClient>(
@@ -529,6 +606,7 @@ void ApplicationController::ensureChatPanel() {
 }
 
 void ApplicationController::ensureSettingsDialog() {
+    ensureServiceOwnership();
     ensureChatPanel();
     if (settingsDialog_ != nullptr) {
         return;
@@ -625,6 +703,12 @@ void ApplicationController::applyConfigDefaults() {
     }
 }
 
+void ApplicationController::applyCaptureModeToService() {
+    if (captureService_ != nullptr) {
+        captureService_->setCaptureMode(config_.captureMode);
+    }
+}
+
 void ApplicationController::applyAppearance() {
     if (chatPanel_ != nullptr) {
         chatPanel_->applyAppearance(config_.theme,
@@ -649,30 +733,25 @@ bool ApplicationController::registerHotkeys() {
 }
 
 void ApplicationController::clearOverlay() {
-    if (overlay_ == nullptr) {
+    if (overlays_.isEmpty()) {
         return;
     }
 
-    overlay_->hide();
-    overlay_->deleteLater();
-    overlay_ = nullptr;
+    const QList<capture::CaptureOverlay*> overlays = overlays_;
+    overlays_.clear();
+    for (capture::CaptureOverlay* overlay : overlays) {
+        if (overlay == nullptr) {
+            continue;
+        }
+
+        overlay->hide();
+        overlay->deleteLater();
+    }
 }
 
 void ApplicationController::cancelCurrentConversation(const bool clearSession) {
-    if (aiClient_ != nullptr) {
-        aiClient_->cancelActiveRequest();
-    } else {
-        guard_.leave(BusyState::RequestInFlight);
-    }
-
-    if (clearSession) {
-        currentSession_.reset();
-    }
-    queuedFollowUpTexts_.clear();
-
-    if (chatPanel_ != nullptr) {
-        chatPanel_->bindSession(currentSession_);
-        chatPanel_->setBusy(false, statusForState(guard_.state()));
+    if (requestController_ != nullptr) {
+        requestController_->cancelCurrentConversation(clearSession);
     }
 }
 
@@ -698,7 +777,9 @@ void ApplicationController::handlePlainScreenshotCapture(const capture::CaptureS
                                2000);
     }
 
-    if (chatPanel_ != nullptr && currentSession_) {
+    if (chatPanel_ != nullptr &&
+        requestController_ != nullptr &&
+        requestController_->hasSession()) {
         chatPanel_->show();
         chatPanel_->raise();
         chatPanel_->activateWindow();
@@ -706,18 +787,17 @@ void ApplicationController::handlePlainScreenshotCapture(const capture::CaptureS
 }
 
 void ApplicationController::beginSessionFromSelection(const capture::CaptureSelection& selection) {
-    queuedFollowUpTexts_.clear();
-    currentSession_ = std::make_shared<chat::ChatSession>();
-    currentSession_->beginWithCapture(encodePng(selection.image));
-    currentSession_->addUserText(defaultFirstPrompt());
-
     ensureChatPanel();
     if (chatPanel_ == nullptr) {
         syncBusyUi(QStringLiteral("Chat panel is unavailable"));
         return;
     }
 
-    chatPanel_->bindSession(currentSession_);
+    if (requestController_ == nullptr) {
+        syncBusyUi(QStringLiteral("Request controller is unavailable"));
+        return;
+    }
+
     chatPanel_->show();
 
     if (QScreen* screen = screenForRect(selection.virtualRect); screen != nullptr) {
@@ -730,212 +810,21 @@ void ApplicationController::beginSessionFromSelection(const capture::CaptureSele
 
     chatPanel_->raise();
     chatPanel_->activateWindow();
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
-    if (!sendCurrentSessionRequest(QStringLiteral("Analyzing screenshot..."))) {
-        chatPanel_->bindSession(currentSession_);
-        syncBusyUi(QStringLiteral("Unable to start AI request"));
-    }
-}
-
-bool ApplicationController::sendCurrentSessionRequest(const QString& busyStatus,
-                                                      const int emptyRetryAttempt,
-                                                      const config::ProviderProfile* requestProfileOverride,
-                                                      const bool allowAssetUploadFallback) {
-    if (currentSession_ == nullptr) {
-        return false;
-    }
-    const config::ProviderProfile requestProfile =
-        withDefaults(requestProfileOverride != nullptr ? *requestProfileOverride
-                                                       : config_.activeProfile);
-
-    const RequestStreamStarter requestStarter = requestStreamStarter_
-        ? requestStreamStarter_
-        : [this](const config::ProviderProfile& profile,
-                 const QList<chat::ChatMessage>& messages,
-                 ai::AiClient::DeltaHandler onTextDelta,
-                 ai::AiClient::DeltaHandler onReasoningDelta,
-                 ai::AiClient::CompletionHandler onComplete,
-                 ai::AiClient::FailureHandler onFailure,
-                 const int retryAttempt) {
-            return aiClient_ != nullptr &&
-                   aiClient_->sendConversationStream(profile,
-                                                     messages,
-                                                     std::move(onTextDelta),
-                                                     std::move(onReasoningDelta),
-                                                     std::move(onComplete),
-                                                     std::move(onFailure),
-                                                     retryAttempt);
-        };
-
-    if (chatPanel_ != nullptr) {
-        chatPanel_->setBusy(true, busyStatus);
-    }
-
-    currentSession_->beginAssistantResponse();
-    if (chatPanel_ != nullptr) {
-        chatPanel_->bindSession(currentSession_);
-    }
-
-    const bool started = requestStarter(
-        requestProfile,
-        currentSession_->messages(),
-        [this](QString textDelta) {
-            if (currentSession_ != nullptr) {
-                currentSession_->appendAssistantTextDelta(textDelta);
-            }
-
-            if (chatPanel_ != nullptr && currentSession_ != nullptr) {
-                chatPanel_->scheduleSessionRefresh();
-            }
-        },
-        [this](QString reasoningDelta) {
-            if (currentSession_ != nullptr) {
-                currentSession_->appendAssistantReasoningDelta(reasoningDelta);
-            }
-
-            if (chatPanel_ != nullptr && currentSession_ != nullptr) {
-                chatPanel_->scheduleSessionRefresh();
-            }
-        },
-        [this, emptyRetryAttempt]() {
-            QTimer::singleShot(0, this, [this, emptyRetryAttempt]() {
-                handleRequestCompleted(emptyRetryAttempt);
-            });
-        },
-        [this, emptyRetryAttempt, requestProfile, allowAssetUploadFallback](QString error) {
-            QTimer::singleShot(0, this, [this,
-                                         emptyRetryAttempt,
-                                         requestProfile,
-                                         allowAssetUploadFallback,
-                                         error = std::move(error)]() {
-                if (currentSession_ != nullptr &&
-                    allowAssetUploadFallback &&
-                    requestProfile.protocol == config::ProviderProtocol::OpenAiResponses &&
-                    messagesContainImage(currentSession_->messages()) &&
-                    isAssetUploadFailure(error)) {
-                    config::ProviderProfile fallbackProfile = requestProfile;
-                    fallbackProfile.protocol = config::ProviderProtocol::OpenAiCompatible;
-                    currentSession_->removeLastAssistantMessage();
-                    if (chatPanel_ != nullptr) {
-                        chatPanel_->bindSession(currentSession_);
-                    }
-                    syncBusyUi(QStringLiteral("图片上传失败，正在切换兼容链路重试…"));
-                    if (sendCurrentSessionRequest(QStringLiteral("图片上传失败，正在切换兼容链路重试…"),
-                                                  emptyRetryAttempt,
-                                                  &fallbackProfile,
-                                                  false)) {
-                        return;
-                    }
-                }
-
-                const QString friendlyError = QStringLiteral("Request failed: %1").arg(error);
-                if (currentSession_ != nullptr) {
-                    currentSession_->failAssistantResponse(friendlyError);
-                }
-
-                if (chatPanel_ != nullptr && currentSession_ != nullptr) {
-                    chatPanel_->bindSession(currentSession_);
-                }
-                syncBusyUi(friendlyError);
-            });
-        },
-        emptyRetryAttempt);
-
-    if (!started) {
-        if (currentSession_ != nullptr) {
-            currentSession_->failAssistantResponse(QStringLiteral("Unable to send now. The app is busy."));
-        }
-        if (chatPanel_ != nullptr) {
-            chatPanel_->bindSession(currentSession_);
-            chatPanel_->setBusy(false, statusForState(guard_.state()));
-        }
-        return false;
-    }
-
-    syncBusyUi(busyStatus);
-    return true;
-}
-
-void ApplicationController::queueFollowUp(const QString& text) {
-    if (text.isEmpty()) {
-        return;
-    }
-
-    queuedFollowUpTexts_.append(text);
-    syncBusyUi(QStringLiteral("已排队 %1 条，当前回复结束后自动发送…").arg(queuedFollowUpTexts_.size()));
-}
-
-void ApplicationController::scheduleQueuedFollowUpSend() {
-    if (queuedFollowUpTexts_.isEmpty() || currentSession_ == nullptr || guard_.isBusy()) {
-        return;
-    }
-
-    const QString nextText = queuedFollowUpTexts_.takeFirst();
-    currentSession_->addUserText(nextText);
-    if (chatPanel_ != nullptr) {
-        chatPanel_->bindSession(currentSession_);
-    }
-
-    if (!sendCurrentSessionRequest(QStringLiteral("正在发送排队追问…"))) {
-        if (chatPanel_ != nullptr) {
-            chatPanel_->bindSession(currentSession_);
-        }
-        syncBusyUi(QStringLiteral("Unable to start AI request"));
-    }
-}
-
-void ApplicationController::handleRequestCompleted(const int emptyRetryAttempt) {
-    bool shouldScheduleQueuedFollowUp = false;
-
-    if (currentSession_ != nullptr) {
-        currentSession_->finalizeAssistantResponse();
-        const auto& messages = currentSession_->messages();
-        const bool hasImageContext = messagesContainImage(messages);
-        const bool hasEmptyAssistantReply =
-            !messages.isEmpty() &&
-            messages.constLast().role == chat::ChatRole::Assistant &&
-            messages.constLast().text.trimmed().isEmpty() &&
-            messages.constLast().reasoningText.trimmed().isEmpty();
-
-        if (hasEmptyAssistantReply && emptyRetryAttempt < kMaxEmptyResponseRetries) {
-            const int retryDelayMs = emptyRetryDelayMs(hasImageContext, emptyRetryAttempt);
-            if (aiClient_ != nullptr) {
-                aiClient_->cancelActiveRequest();
-            }
-            currentSession_->removeLastAssistantMessage();
-            if (chatPanel_ != nullptr) {
-                chatPanel_->bindSession(currentSession_);
-            }
-            syncBusyUi(QStringLiteral("AI 返回空内容，正在自动重试…"));
-            QTimer::singleShot(retryDelayMs, this, [this, nextAttempt = emptyRetryAttempt + 1]() {
-                if (!sendCurrentSessionRequest(QStringLiteral("AI 返回空内容，正在自动重试…"),
-                                               nextAttempt)) {
-                    if (currentSession_ != nullptr) {
-                        currentSession_->failAssistantResponse(QStringLiteral("(empty response)"));
-                    }
-                    if (chatPanel_ != nullptr) {
-                        chatPanel_->bindSession(currentSession_);
-                    }
-                    syncBusyUi(QStringLiteral("Ready"));
-                }
-            });
+    const QPixmap selectionImage = selection.image;
+    QTimer::singleShot(0, this, [this, selectionImage]() {
+        if (chatPanel_ == nullptr || !chatPanel_->isVisible() || requestController_ == nullptr) {
             return;
         }
 
-        if (hasEmptyAssistantReply) {
-            currentSession_->failAssistantResponse(QStringLiteral("(empty response)"));
-        }
+        requestController_->beginSession(encodePng(selectionImage), defaultFirstPrompt());
 
-        if (chatPanel_ != nullptr) {
-            chatPanel_->bindSession(currentSession_);
+        if (!requestController_->startCurrentSessionRequest(QStringLiteral("Analyzing screenshot..."))) {
+            chatPanel_->bindSession(requestController_->session());
+            syncBusyUi(QStringLiteral("Unable to start AI request"));
         }
-        shouldScheduleQueuedFollowUp = !queuedFollowUpTexts_.isEmpty();
-    }
-
-    syncBusyUi(QStringLiteral("Ready"));
-    if (shouldScheduleQueuedFollowUp) {
-        scheduleQueuedFollowUpSend();
-    }
+    });
 }
 
 void ApplicationController::runProviderTest(const bool imageMode) {
@@ -1032,7 +921,7 @@ void ApplicationController::handleProviderTestSuccess(const bool imageMode, cons
 }
 
 void ApplicationController::handleProviderTestFailure(const QString& error) {
-    syncBusyUi(QStringLiteral("测试失败：%1").arg(error));
+    syncBusyUi(QStringLiteral("测试失败：%1").arg(friendlyProviderTestFailure(error)));
 }
 
 void ApplicationController::applySettingsFromDialog() {
@@ -1042,6 +931,7 @@ void ApplicationController::applySettingsFromDialog() {
 
     config_ = settingsDialog_->currentConfig();
     applyConfigDefaults();
+    applyCaptureModeToService();
     rememberWindowSizes();
 
     const bool saved = saveConfigSnapshot();
@@ -1063,6 +953,10 @@ void ApplicationController::applySettingsFromDialog() {
 }
 
 QByteArray ApplicationController::encodePng(const QPixmap& pixmap) const {
+    if (imageEncoderForTest_) {
+        return imageEncoderForTest_(pixmap);
+    }
+
     if (pixmap.isNull()) {
         return {};
     }
@@ -1091,15 +985,6 @@ QString ApplicationController::defaultFirstPrompt() const {
     }
 
     return config::defaultFirstPromptText();
-}
-
-int ApplicationController::emptyRetryDelayMs(const bool hasImageContext,
-                                             const int emptyRetryAttempt) const {
-    if (emptyRetryDelayOverrideMs_ >= 0) {
-        return emptyRetryDelayOverrideMs_;
-    }
-
-    return defaultEmptyRetryDelayMs(hasImageContext, emptyRetryAttempt);
 }
 
 QString ApplicationController::statusForState(const BusyState state) const {

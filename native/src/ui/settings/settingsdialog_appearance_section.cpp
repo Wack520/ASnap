@@ -73,6 +73,7 @@ SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent
     previewReasoningToggle_->setArrowType(Qt::RightArrow);
     previewReasoningToggle_->setText(QStringLiteral("展开思考"));
     previewReasoningToggle_->setEnabled(false);
+    previewReasoningToggle_->setFocusPolicy(Qt::NoFocus);
 
     previewHistoryView_ = new QTextBrowser(previewSurface_);
     previewHistoryView_->setFrameShape(QFrame::NoFrame);
@@ -82,13 +83,17 @@ SettingsDialogAppearanceSection::SettingsDialogAppearanceSection(QWidget* parent
     previewHistoryView_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     previewHistoryView_->setMinimumHeight(220);
     previewHistoryView_->setMaximumHeight(220);
+    previewHistoryView_->setFocusPolicy(Qt::NoFocus);
+    previewHistoryView_->viewport()->setFocusPolicy(Qt::NoFocus);
 
     previewInputField_ = new QLineEdit(previewSurface_);
     previewInputField_->setPlaceholderText(QStringLiteral("继续追问，按 Enter 发送…"));
     previewInputField_->setEnabled(false);
+    previewInputField_->setFocusPolicy(Qt::NoFocus);
 
     previewSendButton_ = new QPushButton(QStringLiteral("↑"), previewSurface_);
     previewSendButton_->setEnabled(false);
+    previewSendButton_->setFocusPolicy(Qt::NoFocus);
 
     auto* previewLayout = new QVBoxLayout(previewSurface_);
     previewLayout->setContentsMargins(14, 12, 14, 12);

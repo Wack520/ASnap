@@ -9,6 +9,7 @@ namespace ais::capture {
 struct ScreenMapping {
     QRect overlayRect;
     QRect virtualRect;
+    qreal devicePixelRatio = 1.0;
 };
 
 struct DesktopSnapshot {

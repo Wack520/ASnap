@@ -1,14 +1,24 @@
 #include "platform/windows/native_screen_capture.h"
 
 #include <memory>
+#include <optional>
 
 #include <QColorSpace>
+#include <QHash>
 
 #include <windows.h>
+
+#include "platform/windows/windows_graphics_capture_backend.h"
 
 namespace ais::platform::windows {
 
 namespace {
+
+struct MonitorDescriptor {
+    HMONITOR handle = nullptr;
+    QString deviceName;
+    QRect monitorRect;
+};
 
 class ScreenDcHandle {
 public:
@@ -61,10 +71,18 @@ private:
     HBITMAP handle_ = nullptr;
 };
 
-struct CaptureEnumContext {
-    HDC screenDc = nullptr;
-    QList<NativeScreenFrame>* frames = nullptr;
+struct MonitorEnumContext {
+    QList<MonitorDescriptor>* monitors = nullptr;
 };
+
+[[nodiscard]] QString normalizedDeviceName(QString name) {
+    name = name.trimmed().toUpper();
+    if (name.startsWith(QStringLiteral(R"(\\?\)")) ||
+        name.startsWith(QStringLiteral(R"(\\.\)"))) {
+        name.remove(0, 4);
+    }
+    return name;
+}
 
 [[nodiscard]] QImage captureMonitorImage(HDC screenDc, const RECT& monitorRect) {
     if (screenDc == nullptr) {
@@ -127,12 +145,32 @@ struct CaptureEnumContext {
     return copy;
 }
 
-[[nodiscard]] BOOL CALLBACK captureMonitorProc(HMONITOR monitor,
-                                               HDC,
-                                               LPRECT,
-                                               LPARAM userData) {
-    auto* context = reinterpret_cast<CaptureEnumContext*>(userData);
-    if (context == nullptr || context->frames == nullptr || context->screenDc == nullptr) {
+[[nodiscard]] std::optional<NativeScreenFrame> captureMonitorWithGdi(HDC screenDc,
+                                                                     const MonitorDescriptor& monitor) {
+    const RECT rcMonitor{
+        monitor.monitorRect.left(),
+        monitor.monitorRect.top(),
+        monitor.monitorRect.right(),
+        monitor.monitorRect.bottom(),
+    };
+    const QImage image = captureMonitorImage(screenDc, rcMonitor);
+    if (image.isNull()) {
+        return std::nullopt;
+    }
+
+    return NativeScreenFrame{
+        .deviceName = monitor.deviceName,
+        .image = image,
+        .monitorRect = monitor.monitorRect,
+    };
+}
+
+[[nodiscard]] BOOL CALLBACK enumMonitorProc(HMONITOR monitor,
+                                            HDC,
+                                            LPRECT,
+                                            LPARAM userData) {
+    auto* context = reinterpret_cast<MonitorEnumContext*>(userData);
+    if (context == nullptr || context->monitors == nullptr) {
         return TRUE;
     }
 
@@ -142,14 +180,9 @@ struct CaptureEnumContext {
         return TRUE;
     }
 
-    const QImage image = captureMonitorImage(context->screenDc, monitorInfo.rcMonitor);
-    if (image.isNull()) {
-        return TRUE;
-    }
-
-    context->frames->append(NativeScreenFrame{
+    context->monitors->append(MonitorDescriptor{
+        .handle = monitor,
         .deviceName = QString::fromWCharArray(monitorInfo.szDevice),
-        .image = image,
         .monitorRect = QRect(monitorInfo.rcMonitor.left,
                              monitorInfo.rcMonitor.top,
                              monitorInfo.rcMonitor.right - monitorInfo.rcMonitor.left,
@@ -158,21 +191,84 @@ struct CaptureEnumContext {
     return TRUE;
 }
 
-}  // namespace
+[[nodiscard]] QList<MonitorDescriptor> enumerateMonitors() {
+    QList<MonitorDescriptor> monitors;
+    MonitorEnumContext context{
+        .monitors = &monitors,
+    };
+    EnumDisplayMonitors(nullptr, nullptr, &enumMonitorProc, reinterpret_cast<LPARAM>(&context));
+    return monitors;
+}
 
-QList<NativeScreenFrame> captureNativeScreens() {
+[[nodiscard]] QList<NativeScreenFrame> captureGdiScreens(const QList<MonitorDescriptor>& monitors) {
     ScreenDcHandle screenDc;
     if (screenDc.get() == nullptr) {
         return {};
     }
 
     QList<NativeScreenFrame> frames;
-    CaptureEnumContext context{
-        .screenDc = screenDc.get(),
-        .frames = &frames,
-    };
-    EnumDisplayMonitors(nullptr, nullptr, &captureMonitorProc, reinterpret_cast<LPARAM>(&context));
+    frames.reserve(monitors.size());
+    for (const MonitorDescriptor& monitor : monitors) {
+        const auto frame = captureMonitorWithGdi(screenDc.get(), monitor);
+        if (frame.has_value()) {
+            frames.append(frame.value());
+        }
+    }
     return frames;
+}
+
+[[nodiscard]] QList<NativeScreenFrame> mergePreferredWithGdiFallback(
+    const QList<NativeScreenFrame>& preferredFrames,
+    const QList<MonitorDescriptor>& monitors) {
+    if (monitors.isEmpty()) {
+        return preferredFrames;
+    }
+
+    QHash<QString, NativeScreenFrame> preferredFramesByName;
+    for (const NativeScreenFrame& frame : preferredFrames) {
+        if (!frame.image.isNull()) {
+            preferredFramesByName.insert(normalizedDeviceName(frame.deviceName), frame);
+        }
+    }
+
+    ScreenDcHandle screenDc;
+    if (screenDc.get() == nullptr) {
+        return preferredFrames;
+    }
+
+    QList<NativeScreenFrame> frames;
+    frames.reserve(monitors.size());
+    for (const MonitorDescriptor& monitor : monitors) {
+        const auto preferredIt = preferredFramesByName.constFind(normalizedDeviceName(monitor.deviceName));
+        if (preferredIt != preferredFramesByName.cend() && !preferredIt->image.isNull()) {
+            frames.append(preferredIt.value());
+            continue;
+        }
+
+        const auto fallbackFrame = captureMonitorWithGdi(screenDc.get(), monitor);
+        if (fallbackFrame.has_value()) {
+            frames.append(fallbackFrame.value());
+        }
+    }
+
+    return frames.isEmpty() ? preferredFrames : frames;
+}
+
+}  // namespace
+
+QList<NativeScreenFrame> captureNativeScreens() {
+    const QList<MonitorDescriptor> monitors = enumerateMonitors();
+    if (monitors.isEmpty()) {
+        return captureWindowsGraphicsScreens();
+    }
+
+    const QList<NativeScreenFrame> wgcFrames =
+        isWindowsGraphicsCaptureSupported() ? captureWindowsGraphicsScreens() : QList<NativeScreenFrame>{};
+    if (!wgcFrames.isEmpty()) {
+        return mergePreferredWithGdiFallback(wgcFrames, monitors);
+    }
+
+    return captureGdiScreens(monitors);
 }
 
 }  // namespace ais::platform::windows

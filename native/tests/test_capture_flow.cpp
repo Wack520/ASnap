@@ -1,3 +1,5 @@
+#include <array>
+
 #include <QMetaType>
 #include <QColor>
 #include <QColorSpace>
@@ -7,17 +9,23 @@
 #include <QRect>
 #include <QSignalSpy>
 #include <QTest>
+#include <qfloat16.h>
 
 #include "capture/capture_overlay.h"
+#include "capture/capture_mode.h"
 #include "capture/capture_selection.h"
 #include "capture/desktop_capture_service.h"
 #include "capture/desktop_snapshot.h"
+#include "capture/screen_capture_backend.h"
 #include "platform/windows/hotkey_chord.h"
+#include "platform/windows/windows_graphics_capture_backend.h"
 
 using ais::capture::CaptureOverlay;
+using ais::capture::CaptureMode;
 using ais::capture::CaptureSelection;
 using ais::capture::DesktopCaptureService;
 using ais::capture::DesktopSnapshot;
+using ais::capture::ScreenCaptureBackend;
 using ais::platform::windows::HotkeyChord;
 
 namespace {
@@ -34,6 +42,7 @@ namespace {
         .screenMappings = {ais::capture::ScreenMapping{
             .overlayRect = QRect(-120, 80, displayImage.width(), displayImage.height()),
             .virtualRect = QRect(-120, 80, displayImage.width(), displayImage.height()),
+            .devicePixelRatio = 1.0,
         }},
     };
 }
@@ -48,13 +57,21 @@ private slots:
     void parsesAltQHotkeyChord();
     void translatesLocalSelectionToVirtualDesktopCoordinates();
     void logicalSelectionCopiesPhysicalPixelsForHighDpiSnapshots();
+    void logicalSelectionDoesNotRenormalizePreparedSdrCapture();
     void translatesSelectionFromPhysicalOverlayToVirtualDesktopCoordinates();
+    void snapshotForScreenKeepsPhysicalPixelsAndLogicalOverlayGeometry();
     void hdrLikeImageIsNormalizedToSdrColorSpace();
     void hdrLikeImageWithoutMetadataAssumesLinearSdrConversion();
     void chromeLikeHdrWhitesAreCompressedBeforeSdrClipping();
     void clippedSdrChromeLikeHighlightsAreCompressed();
     void composeFramesUseOverlayGeometryWithoutMixedDpiGap();
     void composeFramesSkipsEmptyRemoteFrames();
+    void nativeFramesFallbackToDisplayOrderWhenNamesDoNotMatch();
+    void bgraMappedTextureProducesArgb32Image();
+    void halfFloatMappedTextureProducesLinearFp16Image();
+    void shortMappedTextureRowPitchReturnsEmptyImage();
+    void standardCaptureModePrefersWgcBackendsBeforeGdi();
+    void hdrCompatibleCaptureModePrefersGdiBeforeWgcBackends();
     void overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage();
     void overlayInitialRenderKeepsFrozenImageUndimmed();
     void overlayDraggingDimsOnlyOutsideSelection();
@@ -100,6 +117,25 @@ void CaptureFlowTests::logicalSelectionCopiesPhysicalPixelsForHighDpiSnapshots()
     QCOMPARE(cropped.height(), logicalRect.height() * 2);
 }
 
+void CaptureFlowTests::logicalSelectionDoesNotRenormalizePreparedSdrCapture() {
+    QImage prepared(QSize(200, 120), QImage::Format_ARGB32_Premultiplied);
+    prepared.setColorSpace(QColorSpace(QColorSpace::SRgb));
+    prepared.fill(Qt::white);
+
+    QPainter painter(&prepared);
+    painter.fillRect(QRect(60, 30, 80, 60), QColor(48, 48, 48));
+    painter.end();
+
+    QPixmap pixmap = QPixmap::fromImage(prepared);
+    const QPixmap cropped = DesktopCaptureService::copyLogicalSelection(
+        pixmap,
+        QRect(0, 0, prepared.width(), prepared.height()));
+
+    const QImage croppedImage = cropped.toImage();
+    QCOMPARE(croppedImage.pixelColor(4, 4), prepared.pixelColor(4, 4));
+    QCOMPARE(croppedImage.pixelColor(100, 60), prepared.pixelColor(100, 60));
+}
+
 void CaptureFlowTests::translatesSelectionFromPhysicalOverlayToVirtualDesktopCoordinates() {
     const DesktopSnapshot snapshot{
         .overlayGeometry = QRect(0, 0, 320, 100),
@@ -108,10 +144,12 @@ void CaptureFlowTests::translatesSelectionFromPhysicalOverlayToVirtualDesktopCoo
             ais::capture::ScreenMapping{
                 .overlayRect = QRect(0, 0, 200, 100),
                 .virtualRect = QRect(0, 0, 133, 67),
+                .devicePixelRatio = 1.5,
             },
             ais::capture::ScreenMapping{
                 .overlayRect = QRect(200, 0, 120, 80),
                 .virtualRect = QRect(200, 0, 120, 80),
+                .devicePixelRatio = 1.0,
             },
         },
     };
@@ -120,6 +158,48 @@ void CaptureFlowTests::translatesSelectionFromPhysicalOverlayToVirtualDesktopCoo
              QRect(13, 7, 67, 27));
     QCOMPARE(DesktopCaptureService::translateToVirtual(snapshot, QRect(220, 10, 40, 30)),
              QRect(220, 10, 40, 30));
+}
+
+void CaptureFlowTests::snapshotForScreenKeepsPhysicalPixelsAndLogicalOverlayGeometry() {
+    QPixmap displayImage(QSize(320, 100));
+    displayImage.fill(Qt::black);
+    QPainter painter(&displayImage);
+    painter.fillRect(QRect(0, 0, 200, 100), Qt::red);
+    painter.fillRect(QRect(200, 0, 120, 80), Qt::green);
+    painter.end();
+
+    const DesktopSnapshot snapshot{
+        .displayImage = displayImage,
+        .captureImage = displayImage,
+        .overlayGeometry = QRect(0, 0, 320, 100),
+        .virtualGeometry = QRect(0, 0, 320, 80),
+        .screenMappings = {
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(0, 0, 200, 100),
+                .virtualRect = QRect(0, 0, 133, 67),
+                .devicePixelRatio = 1.5,
+            },
+            ais::capture::ScreenMapping{
+                .overlayRect = QRect(200, 0, 120, 80),
+                .virtualRect = QRect(200, 0, 120, 80),
+                .devicePixelRatio = 1.0,
+            },
+        },
+    };
+
+    const DesktopSnapshot leftSnapshot =
+        DesktopCaptureService::snapshotForScreen(snapshot, snapshot.screenMappings.constFirst());
+
+    QCOMPARE(leftSnapshot.overlayGeometry, QRect(0, 0, 133, 67));
+    QCOMPARE(leftSnapshot.virtualGeometry, QRect(0, 0, 133, 67));
+    QCOMPARE(leftSnapshot.displayImage.width(), 200);
+    QCOMPARE(leftSnapshot.displayImage.height(), 100);
+    QCOMPARE(leftSnapshot.displayImage.devicePixelRatio(), 1.5);
+    QCOMPARE(leftSnapshot.displayImage.deviceIndependentSize().toSize(), QSize(133, 67));
+    QCOMPARE(leftSnapshot.screenMappings.size(), 1);
+    QCOMPARE(leftSnapshot.screenMappings.constFirst().overlayRect, QRect(0, 0, 133, 67));
+    QCOMPARE(leftSnapshot.screenMappings.constFirst().virtualRect, QRect(0, 0, 133, 67));
+    QCOMPARE(leftSnapshot.screenMappings.constFirst().devicePixelRatio, 1.5);
 }
 
 void CaptureFlowTests::hdrLikeImageIsNormalizedToSdrColorSpace() {
@@ -264,6 +344,124 @@ void CaptureFlowTests::composeFramesSkipsEmptyRemoteFrames() {
     QCOMPARE(snapshot.displayImage.deviceIndependentSize().toSize(), QSize(160, 100));
 }
 
+void CaptureFlowTests::nativeFramesFallbackToDisplayOrderWhenNamesDoNotMatch() {
+    QImage left(QSize(300, 180), QImage::Format_ARGB32_Premultiplied);
+    left.fill(Qt::red);
+    QImage right(QSize(400, 240), QImage::Format_ARGB32_Premultiplied);
+    right.fill(Qt::green);
+
+    const QList<ais::platform::windows::NativeScreenFrame> nativeFrames{
+        ais::platform::windows::NativeScreenFrame{
+            .deviceName = QStringLiteral("UNRELATED-A"),
+            .image = left,
+            .monitorRect = QRect(0, 0, 300, 180),
+        },
+        ais::platform::windows::NativeScreenFrame{
+            .deviceName = QStringLiteral("UNRELATED-B"),
+            .image = right,
+            .monitorRect = QRect(300, 0, 400, 240),
+        },
+    };
+
+    const QList<ais::capture::detail::ScreenTarget> screenTargets{
+        ais::capture::detail::ScreenTarget{
+            .name = QStringLiteral("DISPLAY-LEFT"),
+            .logicalGeometry = QRect(0, 0, 200, 120),
+            .devicePixelRatio = 1.5,
+        },
+        ais::capture::detail::ScreenTarget{
+            .name = QStringLiteral("DISPLAY-RIGHT"),
+            .logicalGeometry = QRect(200, 0, 200, 120),
+            .devicePixelRatio = 2.0,
+        },
+    };
+
+    const QList<ais::capture::CapturedScreenFrame> frames =
+        ais::capture::detail::mapNativeFramesToScreenTargets(nativeFrames, screenTargets);
+
+    QCOMPARE(frames.size(), 2);
+    QCOMPARE(frames.at(0).overlayGeometry, QRect(0, 0, 300, 180));
+    QCOMPARE(frames.at(0).virtualGeometry, QRect(0, 0, 200, 120));
+    QCOMPARE(frames.at(0).devicePixelRatio, 1.5);
+    QCOMPARE(frames.at(1).overlayGeometry, QRect(300, 0, 400, 240));
+    QCOMPARE(frames.at(1).virtualGeometry, QRect(200, 0, 200, 120));
+    QCOMPARE(frames.at(1).devicePixelRatio, 2.0);
+}
+
+void CaptureFlowTests::bgraMappedTextureProducesArgb32Image() {
+    const std::array<uchar, 8> rawPixels{
+        0x10, 0x20, 0x30, 0xFF,
+        0xAA, 0xBB, 0xCC, 0x80,
+    };
+
+    const QImage image = ais::platform::windows::detail::makeQImageFromMappedTexture(
+        ais::platform::windows::detail::MappedTextureFormat::Bgra8Unorm,
+        QSize(2, 1),
+        8,
+        rawPixels.data());
+
+    QCOMPARE(image.format(), QImage::Format_ARGB32);
+    QCOMPARE(image.colorSpace(), QColorSpace(QColorSpace::SRgb));
+    QCOMPARE(image.pixelColor(0, 0), QColor(0x30, 0x20, 0x10, 0xFF));
+    QCOMPARE(image.pixelColor(1, 0), QColor(0xCC, 0xBB, 0xAA, 0x80));
+}
+
+void CaptureFlowTests::halfFloatMappedTextureProducesLinearFp16Image() {
+    const std::array<qfloat16, 4> rawPixels{
+        qfloat16(1.0f),
+        qfloat16(0.5f),
+        qfloat16(0.25f),
+        qfloat16(1.0f),
+    };
+
+    const QImage image = ais::platform::windows::detail::makeQImageFromMappedTexture(
+        ais::platform::windows::detail::MappedTextureFormat::Rgba16Float,
+        QSize(1, 1),
+        static_cast<qsizetype>(sizeof(rawPixels)),
+        reinterpret_cast<const uchar*>(rawPixels.data()));
+
+    QCOMPARE(image.format(), QImage::Format_RGBA16FPx4);
+    QCOMPARE(image.colorSpace(), QColorSpace(QColorSpace::SRgbLinear));
+
+    const auto* pixel = reinterpret_cast<const qfloat16*>(image.constScanLine(0));
+    QCOMPARE(static_cast<float>(pixel[0]), 1.0f);
+    QCOMPARE(static_cast<float>(pixel[1]), 0.5f);
+    QCOMPARE(static_cast<float>(pixel[2]), 0.25f);
+    QCOMPARE(static_cast<float>(pixel[3]), 1.0f);
+}
+
+void CaptureFlowTests::shortMappedTextureRowPitchReturnsEmptyImage() {
+    const std::array<uchar, 3> rawPixels{0x10, 0x20, 0x30};
+
+    const QImage image = ais::platform::windows::detail::makeQImageFromMappedTexture(
+        ais::platform::windows::detail::MappedTextureFormat::Bgra8Unorm,
+        QSize(2, 1),
+        3,
+        rawPixels.data());
+
+    QVERIFY(image.isNull());
+}
+
+void CaptureFlowTests::standardCaptureModePrefersWgcBackendsBeforeGdi() {
+    const QList<ScreenCaptureBackend> order =
+        ais::platform::windows::backendOrderForCaptureMode(CaptureMode::Standard);
+
+    QCOMPARE(order.size(), 3);
+    QCOMPARE(order.at(0), ScreenCaptureBackend::WindowsGraphicsCaptureBgra);
+    QCOMPARE(order.at(1), ScreenCaptureBackend::WindowsGraphicsCaptureFp16);
+    QCOMPARE(order.at(2), ScreenCaptureBackend::Gdi);
+}
+
+void CaptureFlowTests::hdrCompatibleCaptureModePrefersGdiBeforeWgcBackends() {
+    const QList<ScreenCaptureBackend> order =
+        ais::platform::windows::backendOrderForCaptureMode(CaptureMode::HdrCompatible);
+
+    QCOMPARE(order.size(), 3);
+    QCOMPARE(order.at(0), ScreenCaptureBackend::Gdi);
+    QCOMPARE(order.at(1), ScreenCaptureBackend::WindowsGraphicsCaptureBgra);
+    QCOMPARE(order.at(2), ScreenCaptureBackend::WindowsGraphicsCaptureFp16);
+}
+
 void CaptureFlowTests::overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage() {
     QPixmap displayImage(QSize(200, 120));
     displayImage.fill(Qt::blue);
@@ -281,6 +479,7 @@ void CaptureFlowTests::overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptur
         .screenMappings = {ais::capture::ScreenMapping{
             .overlayRect = QRect(0, 0, displayImage.width(), displayImage.height()),
             .virtualRect = QRect(0, 0, displayImage.width(), displayImage.height()),
+            .devicePixelRatio = 2.0,
         }},
     });
 
@@ -399,10 +598,12 @@ void CaptureFlowTests::doubleClickWithoutSelectionCapturesClickedScreenOnMultiMo
             ais::capture::ScreenMapping{
                 .overlayRect = QRect(0, 0, 54, 96),
                 .virtualRect = QRect(0, 0, 54, 96),
+                .devicePixelRatio = 1.0,
             },
             ais::capture::ScreenMapping{
                 .overlayRect = QRect(192, 0, 256, 144),
                 .virtualRect = QRect(192, 0, 256, 144),
+                .devicePixelRatio = 1.0,
             },
         },
     };

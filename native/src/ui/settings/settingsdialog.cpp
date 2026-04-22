@@ -6,8 +6,14 @@
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QKeySequence>
+#include <QLineEdit>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalBlocker>
+#include <QSizePolicy>
+#include <QStyle>
+#include <QStyleOptionButton>
+#include <QTimer>
 #include <QVBoxLayout>
 
 #include "config/provider_preset.h"
@@ -41,6 +47,41 @@ using ais::ui::settings_appearance::serializeColor;
         return status;
     }
     return busy ? QStringLiteral("处理中…") : QStringLiteral("就绪");
+}
+
+void reserveStableStatusHeight(QLabel* label, const int lineCount) {
+    if (label == nullptr) {
+        return;
+    }
+
+    const int reservedHeight = label->fontMetrics().lineSpacing() * qMax(1, lineCount) + 6;
+    label->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    label->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    label->setMinimumHeight(reservedHeight);
+    label->setMaximumHeight(reservedHeight);
+}
+
+void reserveStableButtonWidth(QPushButton* button, const QStringList& labels) {
+    if (button == nullptr) {
+        return;
+    }
+
+    int reservedWidth = button->minimumSizeHint().width();
+    for (const QString& text : labels) {
+        QStyleOptionButton option;
+        option.initFrom(button);
+        option.text = text;
+        const QSize contentSize = button->fontMetrics().size(Qt::TextShowMnemonic, text);
+        reservedWidth = qMax(reservedWidth,
+                             button->style()->sizeFromContents(QStyle::CT_PushButton,
+                                                               &option,
+                                                               contentSize,
+                                                               button)
+                                 .width());
+    }
+
+    button->setMinimumWidth(reservedWidth);
+    button->setMaximumWidth(reservedWidth);
 }
 
 #ifdef Q_OS_WIN
@@ -83,6 +124,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
 
     statusLabel_ = new QLabel(QStringLiteral("就绪"), this);
     statusLabel_->setWordWrap(true);
+    statusLabel_->hide();
 
     protocolSelector_ = new QComboBox(this);
     for (const ProviderProtocol protocol : {
@@ -104,6 +146,13 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelField_->setObjectName(QStringLiteral("modelCombo"));
     modelField_->setEditable(true);
     modelField_->setInsertPolicy(QComboBox::NoInsert);
+    modelField_->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    modelField_->setMinimumContentsLength(1);
+    modelField_->setMinimumWidth(120);
+    modelField_->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Fixed);
+    if (QLineEdit* lineEdit = modelField_->lineEdit(); lineEdit != nullptr) {
+        lineEdit->setClearButtonEnabled(true);
+    }
 
     modelPopupButton_ = new QToolButton(this);
     modelPopupButton_->setObjectName(QStringLiteral("modelPopupButton"));
@@ -111,20 +160,31 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelPopupButton_->setArrowType(Qt::DownArrow);
     modelPopupButton_->setToolTip(QStringLiteral("展开模型列表"));
     modelPopupButton_->setCursor(Qt::PointingHandCursor);
+    modelPopupButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    modelPopupButton_->setFocusPolicy(Qt::NoFocus);
 
     fetchModelsButton_ = new QPushButton(QStringLiteral("获取模型"), this);
     fetchModelsButton_->setObjectName(QStringLiteral("modelActionButton"));
     fetchModelsButton_->setMinimumWidth(72);
+    fetchModelsButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    fetchModelsButton_->setFocusPolicy(Qt::NoFocus);
 
     modelActionStatusLabel_ = new QLabel(QStringLiteral("可以先获取模型列表，再做文字 / 图片测试。"), this);
     modelActionStatusLabel_->setObjectName(QStringLiteral("settingsSubtitle"));
-    modelActionStatusLabel_->setWordWrap(true);
+    modelActionStatusLabel_->setWordWrap(false);
+    reserveStableStatusHeight(modelActionStatusLabel_, 1);
 
     aiShortcutField_ = new QKeySequenceEdit(this);
     aiShortcutField_->setMaximumSequenceLength(1);
 
     screenshotShortcutField_ = new QKeySequenceEdit(this);
     screenshotShortcutField_->setMaximumSequenceLength(1);
+
+    captureModeField_ = new QComboBox(this);
+    captureModeField_->addItem(QStringLiteral("Standard（优先 WGC）"),
+                               static_cast<int>(ais::capture::CaptureMode::Standard));
+    captureModeField_->addItem(QStringLiteral("HDR Compatible（优先 GDI）"),
+                               static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
 
     firstPromptField_ = new QPlainTextEdit(this);
     firstPromptField_->setPlaceholderText(QStringLiteral("请输入截图后自动发送给 AI 的首轮提示词"));
@@ -135,19 +195,27 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     testConnectionButton_ = new QPushButton(QStringLiteral("测试文字连接"), this);
     testConnectionButton_->setObjectName(QStringLiteral("modelActionButton"));
     testConnectionButton_->setMinimumWidth(72);
+    testConnectionButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    testConnectionButton_->setFocusPolicy(Qt::NoFocus);
 
     testImageButton_ = new QPushButton(QStringLiteral("测试图片理解"), this);
     testImageButton_->setObjectName(QStringLiteral("modelActionButton"));
     testImageButton_->setMinimumWidth(72);
+    testImageButton_->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    testImageButton_->setFocusPolicy(Qt::NoFocus);
 
-    auto* providerCard = new QFrame(this);
-    providerCard->setObjectName(QStringLiteral("settingsCard"));
-    auto* providerForm = new QFormLayout(providerCard);
-    providerForm->setContentsMargins(12, 12, 12, 12);
-    providerForm->setSpacing(8);
-    providerForm->setHorizontalSpacing(12);
+    reserveStableButtonWidth(fetchModelsButton_,
+                             {QStringLiteral("获取模型"), QStringLiteral("获取中…")});
+    reserveStableButtonWidth(testConnectionButton_,
+                             {QStringLiteral("测试文字连接"),
+                              QStringLiteral("文字测试"),
+                              QStringLiteral("测试中…")});
+    reserveStableButtonWidth(testImageButton_,
+                             {QStringLiteral("测试图片理解"),
+                              QStringLiteral("图片测试"),
+                              QStringLiteral("测试中…")});
 
-    auto* modelToolsRow = new QWidget(providerCard);
+    auto* modelToolsRow = new QWidget(this);
     auto* modelToolsLayout = new QHBoxLayout(modelToolsRow);
     modelToolsLayout->setContentsMargins(0, 0, 0, 0);
     modelToolsLayout->setSpacing(4);
@@ -157,18 +225,32 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelToolsLayout->addWidget(testConnectionButton_);
     modelToolsLayout->addWidget(testImageButton_);
 
-    auto* modelToolsStack = new QWidget(providerCard);
+    auto* modelActionCard = new QFrame(this);
+    modelActionCard->setObjectName(QStringLiteral("settingsCard"));
+    modelActionCard->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    auto* modelToolsStack = new QWidget(modelActionCard);
     auto* modelToolsStackLayout = new QVBoxLayout(modelToolsStack);
     modelToolsStackLayout->setContentsMargins(0, 0, 0, 0);
-    modelToolsStackLayout->setSpacing(6);
+    modelToolsStackLayout->setSpacing(4);
     modelToolsStackLayout->addWidget(modelToolsRow);
     modelToolsStackLayout->addWidget(modelActionStatusLabel_);
 
-    providerForm->addRow(QStringLiteral("状态"), statusLabel_);
+    auto* modelActionCardLayout = new QVBoxLayout(modelActionCard);
+    modelActionCardLayout->setContentsMargins(12, 12, 12, 12);
+    modelActionCardLayout->setSpacing(0);
+    modelActionCardLayout->addWidget(modelToolsStack);
+
+    auto* providerCard = new QFrame(this);
+    providerCard->setObjectName(QStringLiteral("settingsCard"));
+    auto* providerForm = new QFormLayout(providerCard);
+    providerForm->setContentsMargins(12, 12, 12, 12);
+    providerForm->setSpacing(8);
+    providerForm->setHorizontalSpacing(12);
+
     providerForm->addRow(QStringLiteral("协议类型"), protocolSelector_);
     providerForm->addRow(QStringLiteral("Base URL"), baseUrlField_);
     providerForm->addRow(QStringLiteral("API Key"), apiKeyField_);
-    providerForm->addRow(QStringLiteral("模型"), modelToolsStack);
+    providerForm->addRow(QStringLiteral("截图模式"), captureModeField_);
 
     auto* shortcutFieldsRow = new QWidget(providerCard);
     auto* shortcutFieldsLayout = new QHBoxLayout(shortcutFieldsRow);
@@ -226,25 +308,34 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     auto* scrollContentLayout = new QVBoxLayout(scrollContent);
     scrollContentLayout->setContentsMargins(0, 0, 0, 0);
     scrollContentLayout->setSpacing(10);
-    scrollContentLayout->addWidget(headerLabel_);
-    scrollContentLayout->addWidget(subtitleLabel_);
     scrollContentLayout->addWidget(providerCard);
     scrollContentLayout->addWidget(appearanceSection_);
     scrollContentLayout->addWidget(promptCard);
     scrollContentLayout->addStretch(1);
 
-    auto* scrollArea = new QScrollArea(this);
-    scrollArea->setObjectName(QStringLiteral("settingsScrollArea"));
-    scrollArea->setWidgetResizable(true);
-    scrollArea->setFrameShape(QFrame::NoFrame);
-    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scrollArea->setWidget(scrollContent);
-    scrollArea->viewport()->setObjectName(QStringLiteral("settingsScrollViewport"));
+    scrollArea_ = new QScrollArea(this);
+    scrollArea_->setObjectName(QStringLiteral("settingsScrollArea"));
+    scrollArea_->setWidgetResizable(true);
+    scrollArea_->setFrameShape(QFrame::NoFrame);
+    scrollArea_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea_->setWidget(scrollContent);
+    scrollArea_->viewport()->setObjectName(QStringLiteral("settingsScrollViewport"));
+    if (QScrollBar* verticalScrollBar = scrollArea_->verticalScrollBar(); verticalScrollBar != nullptr) {
+        connect(verticalScrollBar, &QScrollBar::valueChanged, this, [this](int) {
+            enforceScrollAnchorNow();
+        });
+        connect(verticalScrollBar, &QScrollBar::rangeChanged, this, [this](int, int) {
+            enforceScrollAnchorNow();
+        });
+    }
 
     auto* rootLayout = new QVBoxLayout(this);
     rootLayout->setContentsMargins(10, 8, 10, 8);
     rootLayout->setSpacing(8);
-    rootLayout->addWidget(scrollArea, 1);
+    rootLayout->addWidget(headerLabel_);
+    rootLayout->addWidget(subtitleLabel_);
+    rootLayout->addWidget(modelActionCard);
+    rootLayout->addWidget(scrollArea_, 1);
     rootLayout->addWidget(buttonBox);
 
     const QSignalBlocker protocolBlocker(protocolSelector_);
@@ -259,6 +350,10 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     aiShortcutField_->setKeySequence(QKeySequence::fromString(config.aiShortcut, QKeySequence::PortableText));
     screenshotShortcutField_->setKeySequence(
         QKeySequence::fromString(config.screenshotShortcut, QKeySequence::PortableText));
+    if (captureModeField_ != nullptr) {
+        const int captureModeIndex = captureModeField_->findData(static_cast<int>(config.captureMode));
+        captureModeField_->setCurrentIndex(qMax(0, captureModeIndex));
+    }
 
     if (QComboBox* themeCombo = themeField(); themeCombo != nullptr) {
         themeCombo->setCurrentIndex(qMax(0, themeCombo->findData(config.theme)));
@@ -315,6 +410,13 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
             modelField_->showPopup();
         }
     });
+    const auto preserveScrollPosition = [this]() {
+        beginScrollAnchorIfNeeded();
+    };
+    connect(modelPopupButton_, &QToolButton::pressed, this, preserveScrollPosition);
+    connect(fetchModelsButton_, &QPushButton::pressed, this, preserveScrollPosition);
+    connect(testConnectionButton_, &QPushButton::pressed, this, preserveScrollPosition);
+    connect(testImageButton_, &QPushButton::pressed, this, preserveScrollPosition);
     connect(fetchModelsButton_, &QPushButton::clicked, this, &SettingsDialog::fetchModelsRequested);
     connect(testConnectionButton_, &QPushButton::clicked, this, &SettingsDialog::testConnectionRequested);
     connect(testImageButton_,
@@ -399,6 +501,9 @@ AppConfig SettingsDialog::currentConfig() const {
     config.screenshotShortcut = screenshotShortcutText.isEmpty()
         ? QStringLiteral("Ctrl+Shift+S")
         : screenshotShortcutText;
+    config.captureMode = captureModeField_ != nullptr
+        ? static_cast<ais::capture::CaptureMode>(captureModeField_->currentData().toInt())
+        : ais::capture::CaptureMode::Standard;
 
     config.theme = themeField() != nullptr ? themeField()->currentData().toString() : QStringLiteral("system");
     config.opacity = opacityField() != nullptr ? opacityField()->value() / 100.0 : 1.0;
@@ -467,6 +572,8 @@ void SettingsDialog::setPanelBorderColor(const QColor& color) {
 }
 
 void SettingsDialog::setAvailableModels(const QStringList& models) {
+    preserveScrollPosition();
+
     const QString currentText = modelField_ != nullptr ? modelField_->currentText().trimmed() : QString();
 
     QStringList uniqueModels = models;
@@ -492,18 +599,41 @@ void SettingsDialog::setAvailableModels(const QStringList& models) {
     if (modelActionStatusLabel_ != nullptr) {
         modelActionStatusLabel_->setText(status);
     }
+
+    restoreScrollPositionLater();
 }
 
 void SettingsDialog::setActionMode(const ActionMode mode, const QString& status) {
+    if (mode != ActionMode::None) {
+        beginScrollAnchorIfNeeded();
+    } else {
+        preserveScrollPosition();
+    }
+
     actionMode_ = mode;
     if (modelActionStatusLabel_ != nullptr && !status.trimmed().isEmpty()) {
         modelActionStatusLabel_->setText(status.trimmed());
     }
     refreshModelActionUi();
+    restoreScrollPositionLater();
 }
 
 void SettingsDialog::setBusy(bool busy, const QString& status) {
+    if (busy && actionMode_ != ActionMode::None) {
+        beginScrollAnchorIfNeeded();
+    } else {
+        preserveScrollPosition();
+    }
+
+    if (busy) {
+        if (QWidget* focusedWidget = focusWidget(); focusedWidget != nullptr) {
+            focusedWidget->clearFocus();
+        }
+        clearFocus();
+    }
+
     statusLabel_->setText(themedStatusText(busy, status));
+    statusLabel_->setToolTip(statusLabel_->text());
 
     if (!busy) {
         actionMode_ = ActionMode::None;
@@ -513,6 +643,9 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
     } else if (modelActionStatusLabel_ != nullptr && !status.trimmed().isEmpty()) {
         modelActionStatusLabel_->setText(status.trimmed());
     }
+    if (modelActionStatusLabel_ != nullptr) {
+        modelActionStatusLabel_->setToolTip(modelActionStatusLabel_->text());
+    }
 
     for (QWidget* widget : {
              static_cast<QWidget*>(protocolSelector_),
@@ -520,6 +653,7 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
              static_cast<QWidget*>(apiKeyField_),
              static_cast<QWidget*>(modelField_),
              static_cast<QWidget*>(modelPopupButton_),
+             static_cast<QWidget*>(captureModeField_),
              static_cast<QWidget*>(aiShortcutField_),
              static_cast<QWidget*>(screenshotShortcutField_),
              static_cast<QWidget*>(firstPromptField_),
@@ -538,6 +672,7 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
     }
 
     refreshModelActionUi();
+    restoreScrollPositionLater(!busy);
 }
 
 void SettingsDialog::handleProtocolChanged() {
@@ -564,6 +699,64 @@ void SettingsDialog::refreshModelActionUi() {
 
 int SettingsDialog::indexForProtocol(ProviderProtocol protocol) const {
     return protocolSelector_->findData(static_cast<int>(protocol));
+}
+
+void SettingsDialog::preserveScrollPosition() {
+    if (scrollAnchorActive_) {
+        preservedScrollValue_ = scrollAnchorValue_;
+        return;
+    }
+
+    if (scrollArea_ != nullptr && scrollArea_->verticalScrollBar() != nullptr) {
+        preservedScrollValue_ = scrollArea_->verticalScrollBar()->value();
+    }
+}
+
+void SettingsDialog::beginScrollAnchorIfNeeded() {
+    if (!scrollAnchorActive_ && scrollArea_ != nullptr && scrollArea_->verticalScrollBar() != nullptr) {
+        scrollAnchorValue_ = scrollArea_->verticalScrollBar()->value();
+        scrollAnchorActive_ = true;
+    }
+
+    preserveScrollPosition();
+    enforceScrollAnchorNow();
+}
+
+void SettingsDialog::enforceScrollAnchorNow() {
+    if (!scrollAnchorActive_ || scrollArea_ == nullptr || scrollArea_->verticalScrollBar() == nullptr) {
+        return;
+    }
+
+    QScrollBar* const verticalScrollBar = scrollArea_->verticalScrollBar();
+    if (verticalScrollBar->value() == scrollAnchorValue_) {
+        return;
+    }
+
+    const QSignalBlocker blocker(verticalScrollBar);
+    verticalScrollBar->setValue(scrollAnchorValue_);
+}
+
+void SettingsDialog::restoreScrollPositionLater(const bool releaseScrollAnchor) {
+    if (scrollArea_ == nullptr || scrollArea_->verticalScrollBar() == nullptr) {
+        return;
+    }
+
+    const int scrollValue = preservedScrollValue_;
+    const QList<int> restoreDelays{0, 16, 48, 96};
+    for (int index = 0; index < restoreDelays.size(); ++index) {
+        const int delayMs = restoreDelays.at(index);
+        const bool clearAnchorAfterRestore = releaseScrollAnchor && index == restoreDelays.size() - 1;
+        QTimer::singleShot(delayMs, this, [this, scrollValue, clearAnchorAfterRestore]() {
+            if (scrollArea_ == nullptr || scrollArea_->verticalScrollBar() == nullptr) {
+                return;
+            }
+
+            scrollArea_->verticalScrollBar()->setValue(scrollValue);
+            if (clearAnchorAfterRestore) {
+                scrollAnchorActive_ = false;
+            }
+        });
+    }
 }
 
 }  // namespace ais::ui

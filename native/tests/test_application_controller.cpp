@@ -7,7 +7,9 @@
 
 #include "ai/ai_client.h"
 #include "app/application_controller.h"
+#include "capture/capture_mode.h"
 #include "capture/capture_selection.h"
+#include "ui/settings/settingsdialog.h"
 
 using ais::app::ApplicationController;
 using ais::app::BusyState;
@@ -19,8 +21,14 @@ private slots:
     void idleStateAllowsCapture();
     void requestBusyStateAllowsCaptureInterrupt();
     void ignoresCaptureShortcutWhileProviderTestIsBusy();
+    void loadingConfigAppliesCaptureModeToCaptureService();
+    void savingSettingsAppliesCaptureModeToCaptureService();
     void providerTestCompletionRefreshesStatusAfterSettingsDialogCloses();
+    void provider429FailureUsesFriendlyStatus();
+    void aiCaptureShowsPanelBeforeEncodingSelection();
+    void aiCaptureDefersEncodingUntilNextEventLoopTurn();
     void closingChatPanelCancelsInFlightRequest();
+    void closingChatPanelClearsQueuedFollowUpsAfterRequestFlowSplit();
     void queuedFollowUpAutoSendsAfterCurrentReplyCompletes();
     void emptyAssistantResponseAutomaticallyRetriesThreeTimes();
     void imageConversationEmptyResponseWaitsBeforeRetrying();
@@ -53,6 +61,37 @@ void ApplicationControllerTests::ignoresCaptureShortcutWhileProviderTestIsBusy()
     QVERIFY(!controller.canStartCaptureForTest());
 }
 
+void ApplicationControllerTests::loadingConfigAppliesCaptureModeToCaptureService() {
+    ApplicationController controller;
+    ais::config::AppConfig config;
+    config.captureMode = ais::capture::CaptureMode::HdrCompatible;
+
+    controller.loadConfigForTest(config);
+
+    QCOMPARE(static_cast<int>(controller.captureModeForTest()),
+             static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+}
+
+void ApplicationControllerTests::savingSettingsAppliesCaptureModeToCaptureService() {
+    ApplicationController controller;
+
+    controller.loadConfigForTest(ais::config::AppConfig{});
+    controller.ensureSettingsDialogForTest();
+
+    ais::ui::SettingsDialog* const dialog = controller.settingsDialogForTest();
+    QVERIFY(dialog != nullptr);
+    QVERIFY(dialog->captureModeField() != nullptr);
+
+    const int hdrCompatibleIndex =
+        dialog->captureModeField()->findData(static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+    QVERIFY(hdrCompatibleIndex >= 0);
+    dialog->captureModeField()->setCurrentIndex(hdrCompatibleIndex);
+
+    QVERIFY(QMetaObject::invokeMethod(&controller, "onSettingsSaveRequested", Qt::DirectConnection));
+    QCOMPARE(static_cast<int>(controller.captureModeForTest()),
+             static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+}
+
 void ApplicationControllerTests::providerTestCompletionRefreshesStatusAfterSettingsDialogCloses() {
     ApplicationController controller;
 
@@ -66,6 +105,68 @@ void ApplicationControllerTests::providerTestCompletionRefreshesStatusAfterSetti
     QCOMPARE(controller.lastStatusTextForTest(), QStringLiteral("文字连接测试通过: OK"));
 }
 
+void ApplicationControllerTests::provider429FailureUsesFriendlyStatus() {
+    ApplicationController controller;
+
+    controller.completeProviderTestForTest(
+        false,
+        false,
+        QStringLiteral("HTTP 429: {\"error\":{\"message\":\"Chat upstream returned429\",\"type\":\"upstream_error\",\"param\":\"\",\"code\":\"upstream_error\"}}"));
+
+    QCOMPARE(controller.lastStatusTextForTest(),
+             QStringLiteral("测试失败：服务当前限流（HTTP 429），请稍后再试，或更换模型 / 线路。"));
+}
+
+void ApplicationControllerTests::aiCaptureShowsPanelBeforeEncodingSelection() {
+    ApplicationController controller;
+    bool encoderSawVisiblePanel = false;
+
+    controller.setImageEncoderForTest([&](const QPixmap& pixmap) {
+        Q_UNUSED(pixmap);
+        encoderSawVisiblePanel = controller.isChatPanelVisibleForTest();
+        return QByteArray("encoded-image");
+    });
+
+    QPixmap image(320, 180);
+    image.fill(Qt::blue);
+
+    controller.confirmCaptureForTest(ais::capture::CaptureSelection{
+        .image = image,
+        .localRect = QRect(0, 0, 320, 180),
+        .virtualRect = QRect(40, 50, 320, 180),
+    }, true);
+
+    QCoreApplication::processEvents();
+
+    QVERIFY(encoderSawVisiblePanel);
+}
+
+void ApplicationControllerTests::aiCaptureDefersEncodingUntilNextEventLoopTurn() {
+    ApplicationController controller;
+    int encoderCallCount = 0;
+
+    controller.setImageEncoderForTest([&](const QPixmap& pixmap) {
+        Q_UNUSED(pixmap);
+        encoderCallCount += 1;
+        return QByteArray("encoded-image");
+    });
+
+    QPixmap image(320, 180);
+    image.fill(Qt::darkCyan);
+
+    controller.confirmCaptureForTest(ais::capture::CaptureSelection{
+        .image = image,
+        .localRect = QRect(0, 0, 320, 180),
+        .virtualRect = QRect(40, 50, 320, 180),
+    }, true);
+
+    QCOMPARE(encoderCallCount, 0);
+
+    QCoreApplication::processEvents();
+
+    QCOMPARE(encoderCallCount, 1);
+}
+
 void ApplicationControllerTests::closingChatPanelCancelsInFlightRequest() {
     ApplicationController controller;
 
@@ -74,6 +175,21 @@ void ApplicationControllerTests::closingChatPanelCancelsInFlightRequest() {
     controller.closeChatPanelForTest();
 
     QVERIFY(controller.canStartCaptureForTest());
+    QCOMPARE(controller.lastStatusTextForTest(), QStringLiteral("Ready"));
+}
+
+void ApplicationControllerTests::closingChatPanelClearsQueuedFollowUpsAfterRequestFlowSplit() {
+    ApplicationController controller;
+
+    controller.seedConversationForTest(QStringLiteral("Initial question"));
+    controller.forceBusyStateForTest(BusyState::RequestInFlight);
+    controller.followUpRequestedForTest(QStringLiteral("Queued follow-up"));
+    QCOMPARE(controller.queuedFollowUpCountForTest(), 1);
+
+    controller.closeChatPanelForTest();
+
+    QCOMPARE(controller.queuedFollowUpCountForTest(), 0);
+    QCOMPARE(controller.messageCountForTest(), 0);
     QCOMPARE(controller.lastStatusTextForTest(), QStringLiteral("Ready"));
 }
 

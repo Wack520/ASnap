@@ -9,7 +9,7 @@
 #include <QPainter>
 #include <QScreen>
 
-#include "platform/windows/native_screen_capture.h"
+#include "platform/windows/windows_graphics_capture_backend.h"
 
 namespace ais::capture {
 
@@ -27,6 +27,29 @@ namespace {
     default:
         return false;
     }
+}
+
+[[nodiscard]] bool isCommonSdr8BitFormat(const QImage::Format format) {
+    switch (format) {
+    case QImage::Format_ARGB32:
+    case QImage::Format_ARGB32_Premultiplied:
+    case QImage::Format_RGB32:
+    case QImage::Format_RGBA8888:
+    case QImage::Format_RGBA8888_Premultiplied:
+    case QImage::Format_RGBX8888:
+        return true;
+    default:
+        return false;
+    }
+}
+
+[[nodiscard]] bool isAlreadyNormalizedSdrCapture(const QImage& image) {
+    if (image.isNull() || !isCommonSdr8BitFormat(image.format())) {
+        return false;
+    }
+
+    const QColorSpace colorSpace = image.colorSpace();
+    return !colorSpace.isValid() || colorSpace == QColorSpace(QColorSpace::SRgb);
 }
 
 [[nodiscard]] bool isHdrCandidate(const QImage& image, const QColorSpace& sourceColorSpace) {
@@ -264,47 +287,159 @@ void applyHdrToneMapping(QImage* linearImage, const LinearImageStats& stats) {
     return name;
 }
 
-[[nodiscard]] QList<CapturedScreenFrame> capturedFramesFromNativeScreens(const QList<QScreen*>& screens) {
-    const QList<platform::windows::NativeScreenFrame> nativeScreens =
-        platform::windows::captureNativeScreens();
-    if (nativeScreens.isEmpty()) {
-        return {};
+}  // namespace
+
+QList<CapturedScreenFrame> detail::mapNativeFramesToScreenTargets(
+    const QList<ais::platform::windows::NativeScreenFrame>& nativeFrames,
+    const QList<ScreenTarget>& screenTargets) {
+    struct NativeEntry {
+        ais::platform::windows::NativeScreenFrame frame;
+        QString normalizedName;
+        bool used = false;
+    };
+
+    QList<NativeEntry> entries;
+    entries.reserve(nativeFrames.size());
+    for (const auto& nativeFrame : nativeFrames) {
+        if (nativeFrame.image.isNull() || !nativeFrame.monitorRect.isValid() || nativeFrame.monitorRect.isEmpty()) {
+            continue;
+        }
+
+        entries.append(NativeEntry{
+            .frame = nativeFrame,
+            .normalizedName = normalizedScreenName(nativeFrame.deviceName),
+        });
     }
 
-    QHash<QString, platform::windows::NativeScreenFrame> nativeScreensByName;
-    for (const auto& nativeScreen : nativeScreens) {
-        if (!nativeScreen.image.isNull()) {
-            nativeScreensByName.insert(normalizedScreenName(nativeScreen.deviceName), nativeScreen);
+    std::vector<std::optional<ais::platform::windows::NativeScreenFrame>> matchedFrames(
+        static_cast<std::size_t>(screenTargets.size()));
+
+    for (qsizetype screenIndex = 0; screenIndex < screenTargets.size(); ++screenIndex) {
+        const QString normalizedTargetName = normalizedScreenName(screenTargets.at(screenIndex).name);
+        if (normalizedTargetName.isEmpty()) {
+            continue;
         }
+
+        for (NativeEntry& entry : entries) {
+            if (entry.used || entry.normalizedName != normalizedTargetName) {
+                continue;
+            }
+
+            matchedFrames[static_cast<std::size_t>(screenIndex)] = entry.frame;
+            entry.used = true;
+            break;
+        }
+    }
+
+    QList<int> unmatchedScreenIndexes;
+    unmatchedScreenIndexes.reserve(screenTargets.size());
+    for (int screenIndex = 0; screenIndex < screenTargets.size(); ++screenIndex) {
+        if (!matchedFrames[static_cast<std::size_t>(screenIndex)].has_value()) {
+            unmatchedScreenIndexes.append(screenIndex);
+        }
+    }
+
+    QList<int> unusedNativeIndexes;
+    unusedNativeIndexes.reserve(entries.size());
+    for (int nativeIndex = 0; nativeIndex < entries.size(); ++nativeIndex) {
+        if (!entries.at(nativeIndex).used) {
+            unusedNativeIndexes.append(nativeIndex);
+        }
+    }
+
+    auto compareLogicalOrder = [&screenTargets](const int leftIndex, const int rightIndex) {
+        const QRect leftRect = screenTargets.at(leftIndex).logicalGeometry;
+        const QRect rightRect = screenTargets.at(rightIndex).logicalGeometry;
+        if (leftRect.left() != rightRect.left()) {
+            return leftRect.left() < rightRect.left();
+        }
+        if (leftRect.top() != rightRect.top()) {
+            return leftRect.top() < rightRect.top();
+        }
+        if (leftRect.width() != rightRect.width()) {
+            return leftRect.width() < rightRect.width();
+        }
+        return leftRect.height() < rightRect.height();
+    };
+
+    auto compareNativeOrder = [&entries](const int leftIndex, const int rightIndex) {
+        const QRect leftRect = entries.at(leftIndex).frame.monitorRect;
+        const QRect rightRect = entries.at(rightIndex).frame.monitorRect;
+        if (leftRect.left() != rightRect.left()) {
+            return leftRect.left() < rightRect.left();
+        }
+        if (leftRect.top() != rightRect.top()) {
+            return leftRect.top() < rightRect.top();
+        }
+        if (leftRect.width() != rightRect.width()) {
+            return leftRect.width() < rightRect.width();
+        }
+        return leftRect.height() < rightRect.height();
+    };
+
+    std::sort(unmatchedScreenIndexes.begin(), unmatchedScreenIndexes.end(), compareLogicalOrder);
+    std::sort(unusedNativeIndexes.begin(), unusedNativeIndexes.end(), compareNativeOrder);
+
+    const int fallbackCount = qMin(unmatchedScreenIndexes.size(), unusedNativeIndexes.size());
+    for (int index = 0; index < fallbackCount; ++index) {
+        const int screenIndex = unmatchedScreenIndexes.at(index);
+        const int nativeIndex = unusedNativeIndexes.at(index);
+        matchedFrames[static_cast<std::size_t>(screenIndex)] = entries.at(nativeIndex).frame;
     }
 
     QList<CapturedScreenFrame> frames;
-    for (QScreen* screen : screens) {
-        if (screen == nullptr) {
+    frames.reserve(screenTargets.size());
+    for (int screenIndex = 0; screenIndex < screenTargets.size(); ++screenIndex) {
+        const auto& matchedFrame = matchedFrames[static_cast<std::size_t>(screenIndex)];
+        if (!matchedFrame.has_value()) {
             continue;
         }
 
-        const auto nativeScreen = nativeScreensByName.value(normalizedScreenName(screen->name()));
-        if (nativeScreen.image.isNull()) {
-            continue;
-        }
-
+        const ScreenTarget& target = screenTargets.at(screenIndex);
         frames.append(CapturedScreenFrame{
-            .image = DesktopCaptureService::normalizeForSdr(nativeScreen.image),
-            .overlayGeometry = nativeScreen.monitorRect,
-            .virtualGeometry = screen->geometry(),
-            .devicePixelRatio = qMax(1.0, screen->devicePixelRatio()),
+            .image = DesktopCaptureService::normalizeForSdr(matchedFrame->image),
+            .overlayGeometry = matchedFrame->monitorRect,
+            .virtualGeometry = target.logicalGeometry,
+            .devicePixelRatio = qMax<qreal>(1.0, target.devicePixelRatio),
         });
     }
 
     return frames;
 }
 
+namespace {
+
+[[nodiscard]] QList<CapturedScreenFrame> capturedFramesFromNativeScreens(const QList<QScreen*>& screens,
+                                                                         const CaptureMode captureMode) {
+    const QList<platform::windows::NativeScreenFrame> nativeScreens =
+        platform::windows::captureWindowsScreens(captureMode);
+    if (nativeScreens.isEmpty()) {
+        return {};
+    }
+
+    QList<detail::ScreenTarget> screenTargets;
+    screenTargets.reserve(screens.size());
+    for (QScreen* screen : screens) {
+        if (screen == nullptr) {
+            continue;
+        }
+
+        screenTargets.append(detail::ScreenTarget{
+            .name = screen->name(),
+            .logicalGeometry = screen->geometry(),
+            .devicePixelRatio = qMax(1.0, screen->devicePixelRatio()),
+        });
+    }
+
+    return detail::mapNativeFramesToScreenTargets(nativeScreens, screenTargets);
+}
+
 }  // namespace
 
 DesktopSnapshot DesktopCaptureService::captureVirtualDesktop() const {
     const QList<QScreen*> screens = QGuiApplication::screens();
-    const QList<CapturedScreenFrame> nativeFrames = capturedFramesFromNativeScreens(screens);
+    const QList<CapturedScreenFrame> nativeFrames =
+        capturedFramesFromNativeScreens(screens, captureMode_);
     if (!nativeFrames.isEmpty() && nativeFrames.size() == screens.size()) {
         return composeFrames(nativeFrames);
     }
@@ -328,6 +463,7 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
         screenMappings.append(ScreenMapping{
             .overlayRect = frame.overlayGeometry,
             .virtualRect = frame.virtualGeometry.isValid() ? frame.virtualGeometry : frame.overlayGeometry,
+            .devicePixelRatio = qMax<qreal>(1.0, frame.devicePixelRatio),
         });
         overlayGeometry = first ? frame.overlayGeometry : overlayGeometry.united(frame.overlayGeometry);
         const QRect frameVirtualGeometry =
@@ -347,11 +483,11 @@ DesktopSnapshot DesktopCaptureService::composeFrames(const QList<CapturedScreenF
     canvas.fill(Qt::black);
 
     QPainter painter(&canvas);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     for (const CapturedScreenFrame& frame : validFrames) {
         const QPoint topLeft = frame.overlayGeometry.topLeft() - overlayGeometry.topLeft();
         const QRect targetRect(topLeft, frame.overlayGeometry.size());
-        painter.drawImage(targetRect, normalizeForSdr(frame.image));
+        painter.drawImage(targetRect, frame.image);
     }
     painter.end();
 
@@ -399,6 +535,53 @@ QImage DesktopCaptureService::normalizeForSdr(const QImage& image) {
     }
 
     return normalized;
+}
+
+DesktopSnapshot DesktopCaptureService::snapshotForScreen(const DesktopSnapshot& snapshot,
+                                                         const ScreenMapping& screenMapping) {
+    const QRect overlayRect = screenMapping.overlayRect;
+    const QRect virtualRect = screenMapping.virtualRect.isValid() ? screenMapping.virtualRect
+                                                                  : screenMapping.overlayRect;
+    if (!overlayRect.isValid() || overlayRect.isEmpty()) {
+        return {};
+    }
+
+    const QRect globalOverlayGeometry =
+        snapshot.overlayGeometry.isValid() ? snapshot.overlayGeometry : snapshot.virtualGeometry;
+    const QRect localPhysicalRect = overlayRect.translated(-globalOverlayGeometry.topLeft());
+    const qreal dprX = virtualRect.width() > 0
+                           ? static_cast<qreal>(overlayRect.width()) /
+                                 static_cast<qreal>(virtualRect.width())
+                           : 1.0;
+    const qreal dprY = virtualRect.height() > 0
+                           ? static_cast<qreal>(overlayRect.height()) /
+                                 static_cast<qreal>(virtualRect.height())
+                           : 1.0;
+    const qreal devicePixelRatio = screenMapping.devicePixelRatio > 0.0
+                                       ? qMax<qreal>(1.0, screenMapping.devicePixelRatio)
+                                       : qMax<qreal>(1.0, (dprX + dprY) / 2.0);
+
+    auto cropForScreen = [&](const QPixmap& pixmap) {
+        if (pixmap.isNull()) {
+            return QPixmap{};
+        }
+
+        QPixmap cropped = pixmap.copy(localPhysicalRect);
+        cropped.setDevicePixelRatio(devicePixelRatio);
+        return cropped;
+    };
+
+    return DesktopSnapshot{
+        .displayImage = cropForScreen(snapshot.displayImage),
+        .captureImage = cropForScreen(snapshot.captureImage),
+        .overlayGeometry = virtualRect,
+        .virtualGeometry = virtualRect,
+        .screenMappings = {ScreenMapping{
+            .overlayRect = virtualRect,
+            .virtualRect = virtualRect,
+            .devicePixelRatio = devicePixelRatio,
+        }},
+    };
 }
 
 QRect DesktopCaptureService::translateToVirtual(const QRect& localRect,
@@ -469,7 +652,14 @@ QPixmap DesktopCaptureService::copyLogicalSelection(const QPixmap& source,
                              qRound(logicalRect.height() * devicePixelRatio));
 
     QPixmap cropped = source.copy(physicalRect);
-    cropped = QPixmap::fromImage(normalizeForSdr(cropped.toImage()));
+    QImage croppedImage = cropped.toImage();
+    if (isAlreadyNormalizedSdrCapture(croppedImage)) {
+        cropped.setDevicePixelRatio(devicePixelRatio);
+        return cropped;
+    }
+
+    croppedImage = normalizeForSdr(croppedImage);
+    cropped = QPixmap::fromImage(croppedImage);
     cropped.setDevicePixelRatio(devicePixelRatio);
     return cropped;
 }

@@ -8,7 +8,7 @@ Windows 桌面 AI 截图助手。
     <img src="https://img.shields.io/badge/Download-Windows%20Installer-4f8cff?style=for-the-badge" alt="Download Windows Installer" />
   </a>
   <a href="https://github.com/Wack520/ASnap/releases">
-    <img src="https://img.shields.io/badge/Releases-Preview-111827?style=for-the-badge" alt="Releases" />
+    <img src="https://img.shields.io/badge/Releases-v0.1.0-111827?style=for-the-badge" alt="Releases" />
   </a>
   <a href="https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/Wack520/ASnap/windows-ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" />
@@ -126,12 +126,15 @@ ctest --test-dir build/native -C Debug --output-on-failure
 
 ```text
 .
-├─ native/       # Qt / C++ 主工程
-├─ packaging/    # 安装器与发布资源
-├─ scripts/      # 打包脚本
-├─ docs/specs/   # 设计文档
-└─ docs/plans/   # 实施计划
+├─ native/          # Qt / C++ 主工程
+├─ packaging/       # 安装器与发布资源
+├─ scripts/         # 构建 / 打包脚本
+└─ docs/
+   ├─ media/        # README 演示素材
+   └─ archive/      # 历史设计文档与实施计划
 ```
+
+如需查看阶段性设计、重构计划和历史记录，请进入 `docs/archive/`。
 
 ## 隐私说明
 

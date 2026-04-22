@@ -187,7 +187,10 @@ struct InlineImagePayload {
 
     if (!message.text.isEmpty()) {
         content.append(QJsonObject{
-            {QStringLiteral("type"), QStringLiteral("input_text")},
+            {QStringLiteral("type"),
+             message.role == ChatRole::Assistant
+                 ? QStringLiteral("output_text")
+                 : QStringLiteral("input_text")},
             {QStringLiteral("text"), message.text},
         });
     }

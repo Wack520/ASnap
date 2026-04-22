@@ -27,6 +27,8 @@ add_library(ai_screenshot_core STATIC
     src/ai/sample_image_factory.h
     src/app/application_controller.cpp
     src/app/application_controller.h
+    src/app/conversation_request_controller.cpp
+    src/app/conversation_request_controller.h
     src/capture/capture_overlay.cpp
     src/capture/capture_overlay.h
     src/capture/capture_selection.h
@@ -50,6 +52,8 @@ add_library(ai_screenshot_core STATIC
     src/platform/windows/hotkey_chord.h
     src/platform/windows/native_screen_capture.cpp
     src/platform/windows/native_screen_capture.h
+    src/platform/windows/windows_graphics_capture_backend.cpp
+    src/platform/windows/windows_graphics_capture_backend.h
     src/platform/windows/startup_registry.cpp
     src/platform/windows/startup_registry.h
     src/ui/icon_factory.cpp
@@ -76,7 +80,7 @@ target_include_directories(ai_screenshot_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(ai_screenshot_core PUBLIC Qt6::Core Qt6::Gui Qt6::Widgets Qt6::Network)
 
 if(WIN32)
-    target_link_libraries(ai_screenshot_core PUBLIC user32 shcore dwmapi gdi32)
+    target_link_libraries(ai_screenshot_core PUBLIC user32 shcore dwmapi gdi32 d3d11 dxgi windowsapp)
 endif()
 
 add_executable(ai_screenshot WIN32 src/main.cpp resources/asnap.rc)

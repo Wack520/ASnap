@@ -689,14 +689,18 @@ void AiLayerTests::responsesFollowUpAfterImageReplyKeepsHistoricalImage() {
     QCOMPARE(imageContent.at(0).toObject().value(QStringLiteral("image_url")).toString(),
              QStringLiteral("data:image/png;base64,cG5nLWltYWdl"));
 
-    QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("input_text"));
-    QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("text")).toString(),
-             QStringLiteral("Describe it"));
-    QCOMPARE(input.at(1).toObject().value(QStringLiteral("content")).toArray().at(0).toObject().value(QStringLiteral("text")).toString(),
-             QStringLiteral("It shows a window"));
-    QCOMPARE(input.at(2).toObject().value(QStringLiteral("content")).toArray().at(0).toObject().value(QStringLiteral("text")).toString(),
-             QStringLiteral("Summarize the key warning"));
-}
+      QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("input_text"));
+      QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("text")).toString(),
+               QStringLiteral("Describe it"));
+      const QJsonArray assistantContent = input.at(1).toObject().value(QStringLiteral("content")).toArray();
+      QCOMPARE(assistantContent.size(), 1);
+      QCOMPARE(assistantContent.at(0).toObject().value(QStringLiteral("type")).toString(),
+               QStringLiteral("output_text"));
+      QCOMPARE(assistantContent.at(0).toObject().value(QStringLiteral("text")).toString(),
+               QStringLiteral("It shows a window"));
+      QCOMPARE(input.at(2).toObject().value(QStringLiteral("content")).toArray().at(0).toObject().value(QStringLiteral("text")).toString(),
+               QStringLiteral("Summarize the key warning"));
+  }
 
 void AiLayerTests::responsesStreamingEmitsTextAndReasoningDeltas() {
     ChatSession session;

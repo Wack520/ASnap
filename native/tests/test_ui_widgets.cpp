@@ -11,12 +11,14 @@
 #include <QPlainTextEdit>
 #include <QDialogButtonBox>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSignalSpy>
 #include <QTextBrowser>
 #include <QtTest/QtTest>
 #include <QUrl>
 
 #include "chat/chat_session.h"
+#include "capture/capture_mode.h"
 #include "config/app_config.h"
 #include "config/provider_preset.h"
 #include "config/provider_protocol.h"
@@ -36,6 +38,8 @@ class UiWidgetTests final : public QObject {
 private slots:
     void changingProtocolAppliesRecommendedBaseUrl();
     void busySettingsDialogDisablesTestButtons();
+    void settingsDialogCurrentConfigIncludesCaptureMode();
+    void settingsDialogBusyStateLocksCaptureModeSelector();
     void settingsDialogBusyStateLocksAllEditableControls();
     void settingsDialogBusyStateLocksAppearanceControls();
     void settingsDialogAllowsEditingFirstPrompt();
@@ -55,9 +59,23 @@ private slots:
     void settingsDialogModelRowIncludesFetchAndTestActions();
     void settingsDialogDefaultWidthIsNarrower();
     void settingsDialogShowsDedicatedModelPopupButton();
+    void settingsDialogKeepsModelActionsOnSingleVisibleRowForLongModelNames();
+    void settingsDialogBusyStatePreservesScrollPosition();
+    void settingsDialogFetchClickKeepsScrollPositionThroughAsyncUpdates();
+    void settingsDialogBusyStateClearsFocusedModelEditorWithoutScrollJump();
+    void settingsDialogFetchActionKeepsOriginalScrollAnchorAfterMidFlightJump();
+    void settingsDialogActionButtonsKeepScrollFixedDuringAsyncWork();
+    void settingsDialogActionStartKeepsVisibleSectionAtSameViewportOffset();
+    void settingsDialogLongCompletionStatusDoesNotShiftVisibleSection();
+    void settingsDialogLongCompletionStatusDoesNotPushScrollViewportDown();
+    void settingsDialogProviderActionsRemainPinnedWhenSettingsContentScrolls();
+    void settingsDialogProviderFieldsStillScrollBeneathPinnedActionBar();
+    void settingsDialogHidesDuplicateProviderStatusRow();
+    void settingsDialogActionStatusUsesSingleCompactLine();
     void settingsDialogShowsExplicitModelActionFeedback();
     void settingsDialogCanApplyFetchedModelChoices();
     void settingsDialogPreviewUsesChatLikeMock();
+    void settingsDialogPreviewWidgetsDoNotTakeFocus();
     void settingsDialogRestoresSavedSize();
     void settingsDialogSaveKeepsDialogOpenAndEmitsSignal();
     void bindSessionRendersCurrentHistory();
@@ -131,6 +149,36 @@ void UiWidgetTests::busySettingsDialogDisablesTestButtons() {
     QCOMPARE(dialog.statusLabel()->text(), QStringLiteral("Ready"));
 }
 
+void UiWidgetTests::settingsDialogCurrentConfigIncludesCaptureMode() {
+    AppConfig config;
+    config.captureMode = ais::capture::CaptureMode::Standard;
+
+    SettingsDialog dialog(config);
+    QVERIFY(dialog.captureModeField() != nullptr);
+
+    const int hdrCompatibleIndex =
+        dialog.captureModeField()->findData(static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+    QVERIFY(hdrCompatibleIndex >= 0);
+
+    dialog.captureModeField()->setCurrentIndex(hdrCompatibleIndex);
+
+    const AppConfig current = dialog.currentConfig();
+    QCOMPARE(static_cast<int>(current.captureMode),
+             static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+}
+
+void UiWidgetTests::settingsDialogBusyStateLocksCaptureModeSelector() {
+    SettingsDialog dialog(AppConfig{});
+    QVERIFY(dialog.captureModeField() != nullptr);
+    QVERIFY(dialog.captureModeField()->isEnabled());
+
+    dialog.setBusy(true, QStringLiteral("Busy"));
+    QVERIFY(!dialog.captureModeField()->isEnabled());
+
+    dialog.setBusy(false, QStringLiteral("Ready"));
+    QVERIFY(dialog.captureModeField()->isEnabled());
+}
+
 void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     SettingsDialog dialog(AppConfig{});
 
@@ -139,6 +187,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(!dialog.baseUrlField()->isEnabled());
     QVERIFY(!dialog.apiKeyField()->isEnabled());
     QVERIFY(!dialog.modelField()->isEnabled());
+    QVERIFY(!dialog.captureModeField()->isEnabled());
     QVERIFY(!dialog.themeField()->isEnabled());
     QVERIFY(!dialog.opacityField()->isEnabled());
     QVERIFY(!dialog.panelColorButton()->isEnabled());
@@ -153,6 +202,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(dialog.baseUrlField()->isEnabled());
     QVERIFY(dialog.apiKeyField()->isEnabled());
     QVERIFY(dialog.modelField()->isEnabled());
+    QVERIFY(dialog.captureModeField()->isEnabled());
     QVERIFY(dialog.themeField()->isEnabled());
     QVERIFY(dialog.opacityField()->isEnabled());
     QVERIFY(dialog.panelColorButton()->isEnabled());
@@ -393,6 +443,453 @@ void UiWidgetTests::settingsDialogShowsDedicatedModelPopupButton() {
     QVERIFY(dialog.modelPopupButton()->text().trimmed().isEmpty());
 }
 
+void UiWidgetTests::settingsDialogKeepsModelActionsOnSingleVisibleRowForLongModelNames() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+    QCoreApplication::processEvents();
+
+    const int modelY = dialog.modelField()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int fetchY = dialog.fetchModelsButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int textY = dialog.testConnectionButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int imageY = dialog.testImageButton()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    QVERIFY(qAbs(modelY - fetchY) <= 6);
+    QVERIFY(qAbs(fetchY - textY) <= 6);
+    QVERIFY(qAbs(textY - imageY) <= 6);
+
+    const int imageRight =
+        dialog.testImageButton()->mapTo(&dialog, QPoint(dialog.testImageButton()->width(), 0)).x();
+    QVERIFY2(imageRight <= dialog.width() - 8,
+             qPrintable(QStringLiteral("model action row overflowed dialog width: %1 > %2")
+                            .arg(imageRight)
+                            .arg(dialog.width() - 8)));
+}
+
+void UiWidgetTests::settingsDialogBusyStatePreservesScrollPosition() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    dialog.fetchModelsButton()->setFocus();
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+
+    dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                         QStringLiteral("正在获取模型列表…"));
+    dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+    QCoreApplication::processEvents();
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+}
+
+void UiWidgetTests::settingsDialogFetchClickKeepsScrollPositionThroughAsyncUpdates() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    QCoreApplication::processEvents();
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+
+    connect(&dialog,
+            &SettingsDialog::fetchModelsRequested,
+            &dialog,
+            [&dialog]() {
+                dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                                     QStringLiteral("正在获取模型列表…"));
+                dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+                QTimer::singleShot(0, &dialog, [&dialog]() {
+                    dialog.setAvailableModels({QStringLiteral("gpt-4.1-mini"),
+                                               QStringLiteral("gpt-4o")});
+                    dialog.setBusy(false, QStringLiteral("已获取 2 个模型，可直接选择。"));
+                });
+            });
+
+    QTest::mouseClick(dialog.fetchModelsButton(), Qt::LeftButton);
+    QCoreApplication::processEvents();
+    QTest::qWait(60);
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+}
+
+void UiWidgetTests::settingsDialogBusyStateClearsFocusedModelEditorWithoutScrollJump() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+    QVERIFY(dialog.modelField() != nullptr);
+    QVERIFY(dialog.modelField()->lineEdit() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    dialog.modelField()->lineEdit()->setFocus();
+    QCoreApplication::processEvents();
+    QVERIFY(dialog.modelField()->lineEdit()->hasFocus());
+
+    dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                         QStringLiteral("正在获取模型列表…"));
+    dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+    QCoreApplication::processEvents();
+    QTest::qWait(30);
+
+    QVERIFY(!dialog.modelField()->lineEdit()->hasFocus());
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+}
+
+void UiWidgetTests::settingsDialogFetchActionKeepsOriginalScrollAnchorAfterMidFlightJump() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(0);
+    QCoreApplication::processEvents();
+
+    connect(&dialog,
+            &SettingsDialog::fetchModelsRequested,
+            &dialog,
+            [&dialog, scrollArea]() {
+                dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                                     QStringLiteral("正在获取模型列表…"));
+                dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+
+                QTimer::singleShot(20, &dialog, [scrollArea]() {
+                    scrollArea->verticalScrollBar()->setValue(260);
+                });
+
+                QTimer::singleShot(40, &dialog, [&dialog]() {
+                    dialog.setAvailableModels({QStringLiteral("gpt-4.1-mini"),
+                                               QStringLiteral("gpt-4o")});
+                    dialog.setBusy(false, QStringLiteral("已获取 2 个模型，可直接选择。"));
+                });
+            });
+
+    QTest::mouseClick(dialog.fetchModelsButton(), Qt::LeftButton);
+    QTest::qWait(140);
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+}
+
+void UiWidgetTests::settingsDialogActionButtonsKeepScrollFixedDuringAsyncWork() {
+    struct ActionCase {
+        QString name;
+        SettingsDialog::ActionMode mode;
+        std::function<QPushButton*(SettingsDialog&)> button;
+        std::function<void(SettingsDialog&, std::function<void()>)> connectAction;
+        QString runningStatus;
+        QString completedStatus;
+    };
+
+    const QList<ActionCase> actionCases{
+        ActionCase{
+            .name = QStringLiteral("fetch"),
+            .mode = SettingsDialog::ActionMode::FetchModels,
+            .button = [](SettingsDialog& dialog) { return dialog.fetchModelsButton(); },
+            .connectAction =
+                [](SettingsDialog& dialog, std::function<void()> handler) {
+                    QObject::connect(&dialog, &SettingsDialog::fetchModelsRequested, &dialog, std::move(handler));
+                },
+            .runningStatus = QStringLiteral("正在获取模型列表…"),
+            .completedStatus = QStringLiteral("已获取 2 个模型，可直接选择。"),
+        },
+        ActionCase{
+            .name = QStringLiteral("text"),
+            .mode = SettingsDialog::ActionMode::TestText,
+            .button = [](SettingsDialog& dialog) { return dialog.testConnectionButton(); },
+            .connectAction =
+                [](SettingsDialog& dialog, std::function<void()> handler) {
+                    QObject::connect(&dialog, &SettingsDialog::testConnectionRequested, &dialog, std::move(handler));
+                },
+            .runningStatus = QStringLiteral("正在测试文字连接…"),
+            .completedStatus = QStringLiteral("文字测试通过。"),
+        },
+        ActionCase{
+            .name = QStringLiteral("image"),
+            .mode = SettingsDialog::ActionMode::TestImage,
+            .button = [](SettingsDialog& dialog) { return dialog.testImageButton(); },
+            .connectAction =
+                [](SettingsDialog& dialog, std::function<void()> handler) {
+                    QObject::connect(&dialog,
+                                     &SettingsDialog::testImageUnderstandingRequested,
+                                     &dialog,
+                                     std::move(handler));
+                },
+            .runningStatus = QStringLiteral("正在测试图片理解…"),
+            .completedStatus = QStringLiteral("图片测试通过。"),
+        },
+    };
+
+    for (const ActionCase& actionCase : actionCases) {
+        AppConfig config;
+        config.activeProfile.model =
+            QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+        SettingsDialog dialog(config);
+        dialog.resize(540, 560);
+        dialog.show();
+        QVERIFY2(QTest::qWaitForWindowExposed(&dialog), qPrintable(actionCase.name));
+
+        auto* scrollArea = dialog.findChild<QScrollArea*>();
+        QVERIFY(scrollArea != nullptr);
+        QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+
+        int valueDuringAction = -1;
+        scrollArea->verticalScrollBar()->setValue(0);
+        QCoreApplication::processEvents();
+
+        actionCase.connectAction(
+            dialog,
+            [&dialog, scrollArea, &valueDuringAction, actionCase]() {
+                dialog.setActionMode(actionCase.mode, actionCase.runningStatus);
+                dialog.setBusy(true, actionCase.runningStatus);
+
+                QTimer::singleShot(20, &dialog, [scrollArea, &valueDuringAction]() {
+                    scrollArea->verticalScrollBar()->setValue(260);
+                    valueDuringAction = scrollArea->verticalScrollBar()->value();
+                });
+
+                QTimer::singleShot(40, &dialog, [&dialog, actionCase]() {
+                    if (actionCase.mode == SettingsDialog::ActionMode::FetchModels) {
+                        dialog.setAvailableModels({QStringLiteral("gpt-4.1-mini"),
+                                                   QStringLiteral("gpt-4o")});
+                    }
+                    dialog.setBusy(false, actionCase.completedStatus);
+                });
+            });
+
+        QTest::mouseClick(actionCase.button(dialog), Qt::LeftButton);
+        QTest::qWait(80);
+
+        QCOMPARE(valueDuringAction, 0);
+        QCOMPARE(scrollArea->verticalScrollBar()->value(), 0);
+    }
+}
+
+void UiWidgetTests::settingsDialogActionStartKeepsVisibleSectionAtSameViewportOffset() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->viewport() != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+    QVERIFY(dialog.previewSurface() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(120);
+    QCoreApplication::processEvents();
+
+    const int previewTopBefore =
+        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+
+    connect(&dialog,
+            &SettingsDialog::fetchModelsRequested,
+            &dialog,
+            [&dialog]() {
+                dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                                     QStringLiteral("正在获取模型列表…"));
+                dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+            });
+
+    QTest::mouseClick(dialog.fetchModelsButton(), Qt::LeftButton);
+    QCoreApplication::processEvents();
+    QTest::qWait(30);
+
+    const int previewTopAfter =
+        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 120);
+    QCOMPARE(previewTopAfter, previewTopBefore);
+}
+
+void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotShiftVisibleSection() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->viewport() != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+    QVERIFY(dialog.previewSurface() != nullptr);
+
+    scrollArea->verticalScrollBar()->setValue(120);
+    QCoreApplication::processEvents();
+
+    const int previewTopBefore =
+        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+
+    connect(&dialog,
+            &SettingsDialog::fetchModelsRequested,
+            &dialog,
+            [&dialog]() {
+                dialog.setActionMode(SettingsDialog::ActionMode::FetchModels,
+                                     QStringLiteral("正在获取模型列表…"));
+                dialog.setBusy(true, QStringLiteral("正在获取模型列表…"));
+                QTimer::singleShot(0, &dialog, [&dialog]() {
+                    dialog.setBusy(false,
+                                   QStringLiteral("测试失败：服务当前限流（HTTP 429），请稍后再试，或更换模型 / 线路。"));
+                });
+            });
+
+    QTest::mouseClick(dialog.fetchModelsButton(), Qt::LeftButton);
+    QCoreApplication::processEvents();
+    QTest::qWait(140);
+
+    const int previewTopAfter =
+        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+
+    QCOMPARE(scrollArea->verticalScrollBar()->value(), 120);
+    QCOMPARE(previewTopAfter, previewTopBefore);
+}
+
+void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotPushScrollViewportDown() {
+    AppConfig config;
+    config.activeProfile.model =
+        QStringLiteral("qwen3.5-omni-plus-thinking-search-super-long-model-name-for-layout-regression-check");
+
+    SettingsDialog dialog(config);
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->viewport() != nullptr);
+    QVERIFY(dialog.previewSurface() != nullptr);
+
+    const int viewportTopBefore = scrollArea->mapTo(&dialog, QPoint(0, 0)).y();
+    const int previewTopBefore = dialog.previewSurface()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    dialog.setBusy(false,
+                   QStringLiteral("测试失败：服务当前限流（HTTP 429），请稍后再试，或更换模型 / 线路。"));
+    QCoreApplication::processEvents();
+    QTest::qWait(60);
+
+    const int viewportTopAfter = scrollArea->mapTo(&dialog, QPoint(0, 0)).y();
+    const int previewTopAfter = dialog.previewSurface()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    QCOMPARE(viewportTopAfter, viewportTopBefore);
+    QCOMPARE(previewTopAfter, previewTopBefore);
+}
+
+void UiWidgetTests::settingsDialogProviderActionsRemainPinnedWhenSettingsContentScrolls() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+    QVERIFY(dialog.fetchModelsButton() != nullptr);
+    QVERIFY(dialog.testConnectionButton() != nullptr);
+    QVERIFY(dialog.testImageButton() != nullptr);
+
+    const int fetchTopBefore = dialog.fetchModelsButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int textTopBefore = dialog.testConnectionButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int imageTopBefore = dialog.testImageButton()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    scrollArea->verticalScrollBar()->setValue(140);
+    QCoreApplication::processEvents();
+
+    const int fetchTopAfter = dialog.fetchModelsButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int textTopAfter = dialog.testConnectionButton()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int imageTopAfter = dialog.testImageButton()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    QCOMPARE(fetchTopAfter, fetchTopBefore);
+    QCOMPARE(textTopAfter, textTopBefore);
+    QCOMPARE(imageTopAfter, imageTopBefore);
+}
+
+void UiWidgetTests::settingsDialogProviderFieldsStillScrollBeneathPinnedActionBar() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.resize(540, 560);
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    auto* scrollArea = dialog.findChild<QScrollArea*>();
+    QVERIFY(scrollArea != nullptr);
+    QVERIFY(scrollArea->verticalScrollBar() != nullptr);
+    QVERIFY(dialog.protocolSelector() != nullptr);
+    QVERIFY(dialog.fetchModelsButton() != nullptr);
+
+    const int protocolTopBefore = dialog.protocolSelector()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int fetchTopBefore = dialog.fetchModelsButton()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    scrollArea->verticalScrollBar()->setValue(140);
+    QCoreApplication::processEvents();
+
+    const int protocolTopAfter = dialog.protocolSelector()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int fetchTopAfter = dialog.fetchModelsButton()->mapTo(&dialog, QPoint(0, 0)).y();
+
+    QVERIFY(protocolTopAfter < protocolTopBefore);
+    QCOMPARE(fetchTopAfter, fetchTopBefore);
+}
+
+void UiWidgetTests::settingsDialogHidesDuplicateProviderStatusRow() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    QVERIFY(dialog.statusLabel() != nullptr);
+    QVERIFY(dialog.modelActionStatusLabel() != nullptr);
+
+    QVERIFY(!dialog.statusLabel()->isVisibleTo(&dialog));
+    QVERIFY(dialog.modelActionStatusLabel()->isVisibleTo(&dialog));
+}
+
+void UiWidgetTests::settingsDialogActionStatusUsesSingleCompactLine() {
+    SettingsDialog dialog(AppConfig{});
+    dialog.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
+
+    QVERIFY(dialog.modelActionStatusLabel() != nullptr);
+    QVERIFY(!dialog.modelActionStatusLabel()->wordWrap());
+    QVERIFY(dialog.modelActionStatusLabel()->maximumHeight() <=
+            dialog.modelActionStatusLabel()->fontMetrics().lineSpacing() + 8);
+}
+
 void UiWidgetTests::settingsDialogShowsExplicitModelActionFeedback() {
     SettingsDialog dialog(AppConfig{});
 
@@ -435,6 +932,18 @@ void UiWidgetTests::settingsDialogPreviewUsesChatLikeMock() {
     QVERIFY(dialog.previewHistoryView()->toPlainText().contains(QStringLiteral("示例回答")));
     QVERIFY(dialog.previewHistoryView()->toPlainText().contains(QStringLiteral("const int answer = 42;")));
     QVERIFY(dialog.previewInputPreviewField()->placeholderText().contains(QStringLiteral("继续追问")));
+}
+
+void UiWidgetTests::settingsDialogPreviewWidgetsDoNotTakeFocus() {
+    SettingsDialog dialog(AppConfig{});
+
+    QVERIFY(dialog.previewHistoryView() != nullptr);
+    QVERIFY(dialog.previewInputPreviewField() != nullptr);
+    QVERIFY(dialog.previewSendButton() != nullptr);
+
+    QCOMPARE(dialog.previewHistoryView()->focusPolicy(), Qt::NoFocus);
+    QCOMPARE(dialog.previewInputPreviewField()->focusPolicy(), Qt::NoFocus);
+    QCOMPARE(dialog.previewSendButton()->focusPolicy(), Qt::NoFocus);
 }
 
 void UiWidgetTests::settingsDialogRestoresSavedSize() {
