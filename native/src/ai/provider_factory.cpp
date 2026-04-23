@@ -211,6 +211,22 @@ struct InlineImagePayload {
     return content;
 }
 
+[[nodiscard]] QJsonValue buildResponsesMessageContent(const ChatMessage& message,
+                                                      const bool preferHighDetailImage) {
+    if (message.role == ChatRole::Assistant &&
+        !message.text.isEmpty() &&
+        !message.hasImage()) {
+        return QJsonValue(message.text);
+    }
+
+    const QJsonArray content = buildResponsesContent(message, preferHighDetailImage);
+    if (content.isEmpty()) {
+        return QJsonValue(QJsonValue::Undefined);
+    }
+
+    return QJsonValue(content);
+}
+
 [[nodiscard]] bool messagesContainImage(const QList<ChatMessage>& messages) {
     for (const ChatMessage& message : messages) {
         if (message.hasImage()) {
@@ -370,17 +386,18 @@ public:
         const bool preferHighDetailImage = isLikelyXaiLikeProfile(profile);
         QJsonArray input;
         for (const auto& message : messages) {
-            const QJsonArray content = buildResponsesContent(message, preferHighDetailImage);
-            if (content.isEmpty()) {
+            const QJsonValue content = buildResponsesMessageContent(message, preferHighDetailImage);
+            if (content.isUndefined()) {
                 continue;
             }
 
             const QString role = messageRole(message.role);
-            if (!input.isEmpty()) {
+            if (!input.isEmpty() && content.isArray()) {
                 QJsonObject previousMessage = input.last().toObject();
-                if (previousMessage.value(QStringLiteral("role")).toString() == role) {
+                if (previousMessage.value(QStringLiteral("role")).toString() == role &&
+                    previousMessage.value(QStringLiteral("content")).isArray()) {
                     QJsonArray mergedContent = previousMessage.value(QStringLiteral("content")).toArray();
-                    for (const QJsonValue& part : content) {
+                    for (const QJsonValue& part : content.toArray()) {
                         mergedContent.append(part);
                     }
                     previousMessage.insert(QStringLiteral("content"), mergedContent);
@@ -389,10 +406,16 @@ public:
                 }
             }
 
-            input.append(QJsonObject{
+            QJsonObject requestMessage{
                 {QStringLiteral("role"), role},
                 {QStringLiteral("content"), content},
-            });
+                {QStringLiteral("type"), QStringLiteral("message")},
+            };
+            if (message.role == ChatRole::Assistant) {
+                requestMessage.insert(QStringLiteral("phase"), QStringLiteral("final_answer"));
+            }
+
+            input.append(requestMessage);
         }
 
         QJsonObject root{

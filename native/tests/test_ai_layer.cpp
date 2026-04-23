@@ -152,6 +152,7 @@ private slots:
     void failedRequestReleasesBusyState();
     void responsesImageConversationStreamsThroughResponses();
     void responsesFollowUpAfterImageReplyKeepsHistoricalImage();
+    void responsesFollowUpRequestSkipsPendingAssistantPlaceholderAndUsesStringAssistantHistory();
     void responsesStreamingEmitsTextAndReasoningDeltas();
     void responsesStreamingAcceptsStructuredOutputTextDelta();
     void responsesStreamingUsesOutputTextDoneWhenNoDeltaArrives();
@@ -689,18 +690,54 @@ void AiLayerTests::responsesFollowUpAfterImageReplyKeepsHistoricalImage() {
     QCOMPARE(imageContent.at(0).toObject().value(QStringLiteral("image_url")).toString(),
              QStringLiteral("data:image/png;base64,cG5nLWltYWdl"));
 
-      QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("input_text"));
-      QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("text")).toString(),
-               QStringLiteral("Describe it"));
-      const QJsonArray assistantContent = input.at(1).toObject().value(QStringLiteral("content")).toArray();
-      QCOMPARE(assistantContent.size(), 1);
-      QCOMPARE(assistantContent.at(0).toObject().value(QStringLiteral("type")).toString(),
-               QStringLiteral("output_text"));
-      QCOMPARE(assistantContent.at(0).toObject().value(QStringLiteral("text")).toString(),
-               QStringLiteral("It shows a window"));
-      QCOMPARE(input.at(2).toObject().value(QStringLiteral("content")).toArray().at(0).toObject().value(QStringLiteral("text")).toString(),
-               QStringLiteral("Summarize the key warning"));
-  }
+    QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("type")).toString(), QStringLiteral("input_text"));
+    QCOMPARE(imageContent.at(1).toObject().value(QStringLiteral("text")).toString(),
+             QStringLiteral("Describe it"));
+
+    const QJsonObject assistantMessage = input.at(1).toObject();
+    QCOMPARE(assistantMessage.value(QStringLiteral("type")).toString(), QStringLiteral("message"));
+    QCOMPARE(assistantMessage.value(QStringLiteral("phase")).toString(),
+             QStringLiteral("final_answer"));
+    QVERIFY(assistantMessage.value(QStringLiteral("content")).isString());
+    QCOMPARE(assistantMessage.value(QStringLiteral("content")).toString(),
+             QStringLiteral("It shows a window"));
+
+    QCOMPARE(input.at(2).toObject().value(QStringLiteral("content")).toArray().at(0).toObject().value(QStringLiteral("text")).toString(),
+             QStringLiteral("Summarize the key warning"));
+}
+
+void AiLayerTests::responsesFollowUpRequestSkipsPendingAssistantPlaceholderAndUsesStringAssistantHistory() {
+    ChatSession session;
+    session.beginWithCapture(QByteArray("png-image"));
+    session.addUserText(QStringLiteral("Describe it"));
+    session.addAssistantText(QStringLiteral("It shows a window"));
+    session.addUserText(QStringLiteral("Summarize the key warning"));
+    session.beginAssistantResponse();
+
+    const ProviderProfile profile = makeProfile(
+        ProviderProtocol::OpenAiResponses,
+        QStringLiteral("https://api.example.test/v1"),
+        QStringLiteral("responses-key"),
+        QStringLiteral("gpt-responses"));
+
+    const auto provider = makeProvider(profile.protocol);
+    QVERIFY(provider != nullptr);
+
+    const RequestSpec spec = provider->buildRequest(profile, session.messages());
+    const QJsonDocument document = parseJson(spec.body);
+    QVERIFY(document.isObject());
+    const QJsonArray input = document.object().value(QStringLiteral("input")).toArray();
+
+    QCOMPARE(input.size(), 3);
+    const QJsonObject assistantMessage = input.at(1).toObject();
+    QCOMPARE(assistantMessage.value(QStringLiteral("role")).toString(), QStringLiteral("assistant"));
+    QCOMPARE(assistantMessage.value(QStringLiteral("type")).toString(), QStringLiteral("message"));
+    QCOMPARE(assistantMessage.value(QStringLiteral("phase")).toString(),
+             QStringLiteral("final_answer"));
+    QVERIFY(assistantMessage.value(QStringLiteral("content")).isString());
+    QCOMPARE(assistantMessage.value(QStringLiteral("content")).toString(),
+             QStringLiteral("It shows a window"));
+}
 
 void AiLayerTests::responsesStreamingEmitsTextAndReasoningDeltas() {
     ChatSession session;
