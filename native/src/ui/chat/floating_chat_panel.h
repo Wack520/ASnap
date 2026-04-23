@@ -15,6 +15,7 @@
 #include <QUrl>
 #include <QWidget>
 #include <QFrame>
+#include <QVector>
 
 #include "chat/chat_session.h"
 
@@ -67,6 +68,17 @@ protected:
     void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
+    struct HistoryMessageRenderCacheEntry {
+        ais::chat::ChatRole role = ais::chat::ChatRole::User;
+        bool streaming = false;
+        bool hasImage = false;
+        QString theme;
+        QString text;
+        QString html;
+        QHash<QString, QString> copyPayloads;
+        int copyCount = 0;
+    };
+
     enum class InteractionMode {
         None,
         Move,
@@ -104,6 +116,8 @@ private:
     QTimer* refreshTimer_ = nullptr;
     QString cachedReasoningKey_;
     QString cachedReasoningDocumentHtml_;
+    QString cachedHistoryDocumentHtml_;
+    QVector<HistoryMessageRenderCacheEntry> historyRenderCache_;
     QLabel* statusLabel_ = nullptr;
     QToolButton* reasoningToggleButton_ = nullptr;
     QToolButton* minimizeButton_ = nullptr;

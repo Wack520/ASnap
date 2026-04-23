@@ -70,17 +70,11 @@ ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 | Gemini | Google Gemini |
 | Claude | Anthropic Claude |
 
-## 下载与安装
+## 下载
 
-前往 Releases 页面下载 Windows 安装器：
-
-- **Releases:** https://github.com/Wack520/ASnap/releases
-
-当前发布默认提供：
-
-- `ASnap-Setup-windows-x64-<version>.exe`
-
-安装后即可直接启动，无需手动拷贝 Qt 运行库。
+- Releases: https://github.com/Wack520/ASnap/releases
+- 下载 `ASnap-Setup-windows-x64-<version>.exe`
+- 运行安装器即可，无需手动拷贝 Qt 运行库
 
 ## 从源码构建
 

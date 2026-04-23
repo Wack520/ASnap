@@ -91,20 +91,19 @@ jobs:
           $shaLine = (Get-Content $shaPath | Select-Object -First 1).Trim()
           $shaValue = ($shaLine -split '\s+')[0]
           @"
-          ## 推荐下载
+          ## 下载
 
-          - **Windows 中文安装器（推荐）**：$($installer.Name)
+          - Windows 安装器：$($installer.Name)
 
-          ## 校验信息
+          ## 校验
 
           - SHA256: $($shaValue)
 
-          ## 本次整理
+          ## 更新
 
-          - 包含当前稳定版的最新界面与交互修复
-          - Release 页面只保留一个 Windows 安装器 EXE，避免重复 installer 混淆
-          - 安装器保留中文体验与现代向导样式
-          - 安装时支持手动选择安装路径
+          - 流式 Markdown 渲染更完整
+          - 长文本输出更稳，减少闪动和重复重绘
+          - Release 页面保持单一安装器下载入口
           "@ | Set-Content dist/release-notes.md -Encoding utf8
 
       - name: Remove stale installer assets
@@ -114,13 +113,22 @@ jobs:
         shell: pwsh
         run: |
           $tagName = "${{ steps.version.outputs.display_value }}"
+          $expectedInstaller = Get-ChildItem dist -Filter 'ASnap-Setup-windows-x64-*.exe' | Select-Object -First 1
+          if ($null -eq $expectedInstaller) {
+            throw 'Expected installer EXE not found.'
+          }
+
           $release = gh release view $tagName --json assets 2>$null | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $null -eq $release) {
             exit 0
           }
 
           foreach ($asset in @($release.assets)) {
-            if ($asset.name -like 'ASnap-Setup-windows-x64-*.exe') {
+            if ($asset.name -ne $expectedInstaller.Name -and (
+              $asset.name -like 'ASnap-Setup-windows-x64-*.exe' -or
+              $asset.name -like 'ASnap-windows-x64-*.zip' -or
+              $asset.name -like '*.sha256.txt'
+            )) {
               gh release delete-asset $tagName $asset.name --yes
             }
           }

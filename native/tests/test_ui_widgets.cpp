@@ -108,7 +108,9 @@ private slots:
     void assistantMarkdownRendersWithoutLiteralFenceMarkers();
     void historyCssUsesDedicatedCodeBodyContainer();
     void renderedCodeBlocksUseCleanPreMarkup();
-    void streamingAssistantMessagesUseLightweightPreviewMarkup();
+    void streamingAssistantMessagesRenderMarkdownIncrementally();
+    void streamingAssistantMessagesTreatOpenFenceAsTemporaryCodeBlock();
+    void longStreamingRefreshReusesCachedHistoryRenders();
     void assistantMarkdownLinksOpenThroughDesktopServices();
     void streamingBadgeRequiresVisibleAssistantText();
     void streamingBadgeAppearsAfterAssistantTextStarts();
@@ -1444,10 +1446,20 @@ void UiWidgetTests::renderedCodeBlocksUseCleanPreMarkup() {
     QVERIFY(!rendered.html.contains(QStringLiteral("-qt-"), Qt::CaseInsensitive));
 }
 
-void UiWidgetTests::streamingAssistantMessagesUseLightweightPreviewMarkup() {
+void UiWidgetTests::streamingAssistantMessagesRenderMarkdownIncrementally() {
     ais::chat::ChatMessage message;
     message.role = ais::chat::ChatRole::Assistant;
-    message.text = QStringLiteral("```python\nimport argparse\nprint('ok')\n```");
+    message.text = QStringLiteral(
+        "### 标题\n\n"
+        "- 列表项 1\n"
+        "- 列表项 2\n\n"
+        "| 字段 | 值 |\n"
+        "|---|---|\n"
+        "| id | 1 |\n\n"
+        "```python\n"
+        "import argparse\n"
+        "print('ok')\n"
+        "```");
     message.streaming = true;
 
     int copyCounter = 0;
@@ -1458,9 +1470,85 @@ void UiWidgetTests::streamingAssistantMessagesUseLightweightPreviewMarkup() {
         &copyCounter,
         &copyPayloads);
 
-    QVERIFY(html.contains(QStringLiteral("```python")));
-    QVERIFY(!html.contains(QStringLiteral("code-card")));
-    QVERIFY(copyPayloads.isEmpty());
+    QVERIFY(!html.contains(QStringLiteral("streaming-plain")));
+    QVERIFY(html.contains(QStringLiteral("code-card")));
+    QVERIFY(!html.contains(QStringLiteral("```python")));
+    QVERIFY(html.contains(QStringLiteral("<ul"), Qt::CaseInsensitive));
+    QVERIFY(html.contains(QStringLiteral("<table"), Qt::CaseInsensitive));
+    QCOMPARE(copyPayloads.size(), 1);
+}
+
+void UiWidgetTests::streamingAssistantMessagesTreatOpenFenceAsTemporaryCodeBlock() {
+    ais::chat::ChatMessage message;
+    message.role = ais::chat::ChatRole::Assistant;
+    message.text = QStringLiteral(
+        "开始解释\n\n"
+        "```javascript\n"
+        "function brokenBlock() {\n"
+        "  const a = 1;\n"
+        "  const b = 2;\n"
+        "  if (a < b) {\n"
+        "    console.log('这个代码块故意不闭合');\n"
+        "  }\n"
+        "// 注意：这里没有结束的三个反引号");
+    message.streaming = true;
+
+    int copyCounter = 0;
+    QHash<QString, QString> copyPayloads;
+    const QString html = ais::ui::floating_chat_panel_helpers::htmlForMessage(
+        message,
+        QStringLiteral("dark"),
+        &copyCounter,
+        &copyPayloads);
+
+    QVERIFY(!html.contains(QStringLiteral("streaming-plain")));
+    QVERIFY(html.contains(QStringLiteral("code-card")));
+    QVERIFY(!html.contains(QStringLiteral("```javascript")));
+    QCOMPARE(copyPayloads.size(), 1);
+    QVERIFY(copyPayloads.cbegin().value().contains(QStringLiteral("function brokenBlock()")));
+}
+
+void UiWidgetTests::longStreamingRefreshReusesCachedHistoryRenders() {
+    auto session = std::make_shared<ChatSession>();
+    session->beginWithCapture(QByteArray("png-image"));
+    for (int index = 0; index < 16; ++index) {
+        session->addUserText(QStringLiteral("Question %1").arg(index));
+        session->addAssistantText(QStringLiteral(
+            "### Answer %1\n\n"
+            "- item 1\n"
+            "- item 2\n\n"
+            "```cpp\n"
+            "int value_%1 = %1;\n"
+            "```\n")
+                                      .arg(index));
+    }
+
+    FloatingChatPanel panel;
+    panel.resize(420, 420);
+    panel.bindSession(session);
+    panel.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&panel));
+    QCoreApplication::processEvents();
+
+    ais::ui::resetMarkdownRenderCallCountForTest();
+    session->beginAssistantResponse();
+    session->appendAssistantTextDelta(QStringLiteral(
+        "### Streaming answer\n\n"
+        "- item a\n"
+        "- item b\n\n"
+        "```python\n"
+        "print('streaming')\n"
+        "```"));
+    panel.scheduleSessionRefresh();
+
+    QTest::qWait(120);
+    QCoreApplication::processEvents();
+
+    const int renderCount = ais::ui::markdownRenderCallCountForTest();
+    QVERIFY2(renderCount <= 2,
+             qPrintable(QStringLiteral("expected cached history renders, got %1 markdown render calls")
+                            .arg(renderCount)));
+    QVERIFY(panel.historyView()->toHtml().contains(QStringLiteral("Streaming answer")));
 }
 
 void UiWidgetTests::assistantMarkdownLinksOpenThroughDesktopServices() {

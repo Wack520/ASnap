@@ -58,6 +58,30 @@ constexpr int kPanelCornerRadius = 18;
     }
 }
 
+[[nodiscard]] int historyRefreshIntervalMs(const std::shared_ptr<ais::chat::ChatSession>& session) {
+    if (!session) {
+        return 24;
+    }
+
+    qsizetype totalChars = 0;
+    bool streaming = false;
+    for (const ChatMessage& message : session->messages()) {
+        totalChars += message.text.size();
+        streaming = streaming || message.streaming;
+    }
+
+    if (!streaming) {
+        return 24;
+    }
+    if (totalChars >= 12000) {
+        return 64;
+    }
+    if (totalChars >= 5000) {
+        return 48;
+    }
+    return 32;
+}
+
 }  // namespace
 
 FloatingChatPanel::FloatingChatPanel(QWidget* parent)
@@ -188,6 +212,8 @@ void FloatingChatPanel::bindSession(const std::shared_ptr<ais::chat::ChatSession
     if (session_ != session) {
         reasoningExpanded_ = false;
         historyAutoFollow_ = true;
+        cachedHistoryDocumentHtml_.clear();
+        historyRenderCache_.clear();
     }
     session_ = session;
     refreshBoundSessionViews();
@@ -199,6 +225,7 @@ void FloatingChatPanel::scheduleSessionRefresh() {
         return;
     }
 
+    refreshTimer_->setInterval(historyRefreshIntervalMs(session_));
     if (!refreshTimer_->isActive()) {
         refreshTimer_->start();
     }
@@ -496,6 +523,8 @@ void FloatingChatPanel::applyCursorForPosition(const QPoint& pos) {
 void FloatingChatPanel::refreshHistory() {
     if (!session_) {
         historyAutoFollow_ = true;
+        cachedHistoryDocumentHtml_.clear();
+        historyRenderCache_.clear();
         historyView_->clear();
         return;
     }
@@ -524,10 +553,52 @@ void FloatingChatPanel::refreshHistory() {
                                                                      currentBorderColor_),
                                                                  currentSurfaceAlpha_));
 
-    for (const ChatMessage& message : session_->messages()) {
-        html += helpers::htmlForMessage(message, currentTheme_, &copyCounter_, &copyPayloads_);
+    const auto matchesCachedHistoryMessage = [this](const HistoryMessageRenderCacheEntry& entry,
+                                                    const ChatMessage& message) {
+        return entry.role == message.role &&
+               entry.streaming == message.streaming &&
+               entry.hasImage == message.hasImage() &&
+               entry.theme == currentTheme_ &&
+               entry.text == message.text;
+    };
+
+    QVector<HistoryMessageRenderCacheEntry> nextHistoryCache;
+    nextHistoryCache.reserve(session_->messages().size());
+    for (qsizetype index = 0; index < session_->messages().size(); ++index) {
+        const ChatMessage& message = session_->messages().at(index);
+        HistoryMessageRenderCacheEntry entry;
+        const bool canReuseEntry =
+            index < historyRenderCache_.size() &&
+            matchesCachedHistoryMessage(historyRenderCache_.at(index), message);
+        if (canReuseEntry) {
+            entry = historyRenderCache_.at(index);
+            copyCounter_ += entry.copyCount;
+            for (auto it = entry.copyPayloads.cbegin(); it != entry.copyPayloads.cend(); ++it) {
+                copyPayloads_.insert(it.key(), it.value());
+            }
+        } else {
+            const int previousCopyCounter = copyCounter_;
+            entry.role = message.role;
+            entry.streaming = message.streaming;
+            entry.hasImage = message.hasImage();
+            entry.theme = currentTheme_;
+            entry.text = message.text;
+            entry.html = helpers::htmlForMessage(message, currentTheme_, &copyCounter_, &entry.copyPayloads);
+            entry.copyCount = copyCounter_ - previousCopyCounter;
+            for (auto it = entry.copyPayloads.cbegin(); it != entry.copyPayloads.cend(); ++it) {
+                copyPayloads_.insert(it.key(), it.value());
+            }
+        }
+        html += entry.html;
+        nextHistoryCache.append(std::move(entry));
     }
     html += QStringLiteral("</body></html>");
+
+    historyRenderCache_ = std::move(nextHistoryCache);
+    if (html == cachedHistoryDocumentHtml_) {
+        return;
+    }
+    cachedHistoryDocumentHtml_ = html;
 
     const auto restoreHistoryScrollPosition = [this,
                                                verticalScrollBar,

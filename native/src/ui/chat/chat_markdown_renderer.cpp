@@ -1,5 +1,7 @@
 #include "ui/chat/chat_markdown_renderer.h"
 
+#include <atomic>
+#include <optional>
 #include <QRegularExpression>
 #include <QTextBlock>
 #include <QTextDocument>
@@ -10,6 +12,14 @@
 namespace ais::ui {
 
 namespace {
+
+std::atomic<int> g_markdownRenderCallCount = 0;
+
+struct TrailingOpenFence {
+    qsizetype fenceStart = 0;
+    QString language;
+    QString code;
+};
 
 [[nodiscard]] QString extractBodyHtml(QString html) {
     static const QRegularExpression bodyPattern(
@@ -32,13 +42,18 @@ namespace {
     return extractBodyHtml(document.toHtml());
 }
 
+[[nodiscard]] QString normalizedMarkdown(QString markdown) {
+    markdown.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
+    markdown.replace(QChar::CarriageReturn, QChar::LineFeed);
+    return markdown;
+}
+
 [[nodiscard]] QString plainTextPreviewHtml(QString markdown) {
     if (markdown.isEmpty()) {
         return {};
     }
 
-    markdown.replace(QStringLiteral("\r\n"), QStringLiteral("\n"));
-    markdown.replace(QChar::CarriageReturn, QChar::LineFeed);
+    markdown = normalizedMarkdown(std::move(markdown));
     return QStringLiteral("<div class=\"streaming-plain\">%1</div>")
         .arg(markdown.toHtmlEscaped());
 }
@@ -127,31 +142,55 @@ namespace {
         .arg(languageText, blockId, highlightedCodeHtml(code, language, theme));
 }
 
+[[nodiscard]] std::optional<TrailingOpenFence> findTrailingOpenFence(const QString& markdown) {
+    static const QRegularExpression openFencePattern(
+        QStringLiteral(R"((^|\n)```([^\n`]*)\n)")
+    );
+
+    QRegularExpressionMatch lastMatch;
+    auto iterator = openFencePattern.globalMatch(markdown);
+    while (iterator.hasNext()) {
+        lastMatch = iterator.next();
+    }
+
+    if (!lastMatch.hasMatch()) {
+        return std::nullopt;
+    }
+
+    return TrailingOpenFence{
+        .fenceStart = lastMatch.capturedStart(0),
+        .language = lastMatch.captured(2).trimmed(),
+        .code = markdown.mid(lastMatch.capturedEnd(0)),
+    };
+}
+
 }  // namespace
 
 RenderedMarkdown renderMarkdownWithCodeTools(const QString& markdown,
                                              const QString& theme,
                                              int* copyCounter,
                                              const MarkdownRenderMode mode) {
+    g_markdownRenderCallCount.fetch_add(1, std::memory_order_relaxed);
     RenderedMarkdown rendered;
     if (mode == MarkdownRenderMode::PlainTextPreview) {
         rendered.html = plainTextPreviewHtml(markdown);
         return rendered;
     }
 
+    const QString normalized = normalizedMarkdown(markdown);
     static const QRegularExpression fencePattern(
         QStringLiteral(R"(```([^\n`]*)\n([\s\S]*?)\n?```)")
     );
 
     int cursor = 0;
-    const auto matches = fencePattern.globalMatch(markdown);
+    const auto matches = fencePattern.globalMatch(normalized);
     auto iterator = matches;
     while (iterator.hasNext()) {
         const QRegularExpressionMatch match = iterator.next();
         const int start = match.capturedStart();
         const int end = match.capturedEnd();
 
-        rendered.html += markdownFragmentToHtml(markdown.mid(cursor, start - cursor));
+        rendered.html += markdownFragmentToHtml(normalized.mid(cursor, start - cursor));
 
         const QString language = match.captured(1).trimmed();
         QString code = match.captured(2);
@@ -165,8 +204,28 @@ RenderedMarkdown renderMarkdownWithCodeTools(const QString& markdown,
         cursor = end;
     }
 
-    rendered.html += markdownFragmentToHtml(markdown.mid(cursor));
+    const QString trailingMarkdown = normalized.mid(cursor);
+    if (const auto trailingFence = findTrailingOpenFence(trailingMarkdown); trailingFence.has_value()) {
+        rendered.html += markdownFragmentToHtml(
+            trailingMarkdown.left(trailingFence->fenceStart));
+        const QString blockId = QStringLiteral("code-%1").arg(copyCounter ? (*copyCounter)++ : 0);
+        rendered.copyPayloads.insert(blockId, trailingFence->code);
+        rendered.html += codeBlockHtml(blockId,
+                                       trailingFence->code,
+                                       trailingFence->language,
+                                       theme);
+    } else {
+        rendered.html += markdownFragmentToHtml(trailingMarkdown);
+    }
     return rendered;
+}
+
+void resetMarkdownRenderCallCountForTest() {
+    g_markdownRenderCallCount.store(0, std::memory_order_relaxed);
+}
+
+int markdownRenderCallCountForTest() {
+    return g_markdownRenderCallCount.load(std::memory_order_relaxed);
 }
 
 }  // namespace ais::ui

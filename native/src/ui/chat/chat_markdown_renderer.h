@@ -21,4 +21,7 @@ enum class MarkdownRenderMode {
                                                            MarkdownRenderMode mode =
                                                                MarkdownRenderMode::Full);
 
+void resetMarkdownRenderCallCountForTest();
+[[nodiscard]] int markdownRenderCallCountForTest();
+
 }  // namespace ais::ui

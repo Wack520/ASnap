@@ -113,10 +113,7 @@ QString htmlForMessage(const ais::chat::ChatMessage& message,
                        QHash<QString, QString>* copyPayloads) {
     const QString role = message.role == ChatRole::Assistant ? QStringLiteral("AI") : QStringLiteral("你");
 
-    const MarkdownRenderMode renderMode =
-        message.role == ChatRole::Assistant && message.streaming
-        ? MarkdownRenderMode::PlainTextPreview
-        : MarkdownRenderMode::Full;
+    const MarkdownRenderMode renderMode = MarkdownRenderMode::Full;
     RenderedMarkdown rendered = renderMarkdownWithCodeTools(message.text, theme, copyCounter, renderMode);
     QString body = rendered.html;
     if (copyPayloads != nullptr) {
