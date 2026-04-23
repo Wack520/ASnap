@@ -12,7 +12,6 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
-#include <QTextBrowser>
 #include <QToolButton>
 
 #include "config/app_config.h"
@@ -64,12 +63,6 @@ public:
     [[nodiscard]] QPushButton* panelTextAutoButton() const noexcept;
     [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept;
     [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept;
-    [[nodiscard]] QFrame* previewSurface() const noexcept;
-    [[nodiscard]] QFrame* previewComposerShell() const noexcept;
-    [[nodiscard]] QLabel* previewTitleLabel() const noexcept;
-    [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept;
-    [[nodiscard]] QLineEdit* previewInputPreviewField() const noexcept;
-    [[nodiscard]] QPushButton* previewSendButton() const noexcept;
     [[nodiscard]] QPlainTextEdit* firstPromptField() const noexcept { return firstPromptField_; }
     [[nodiscard]] QCheckBox* launchAtLoginCheckBox() const noexcept { return launchAtLoginCheckBox_; }
     [[nodiscard]] QPushButton* testConnectionButton() const noexcept { return testConnectionButton_; }

@@ -136,6 +136,21 @@ function Invoke-Step {
     & $Action
 }
 
+function Normalize-VersionSuffix {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return "local"
+    }
+
+    $trimmed = $Value.Trim()
+    if ($trimmed -match '^[vV](\d.*)$') {
+        return $Matches[1]
+    }
+
+    return $trimmed
+}
+
 $repoRoot = Resolve-RepoRoot
 $buildDirPath = Join-Path $repoRoot $BuildDir
 $outputDirPath = Join-Path $repoRoot $OutputDir
@@ -144,7 +159,7 @@ $ctestExe = Join-Path (Split-Path -Parent $cmakeExe) "ctest.exe"
 $qtRoot = Find-QtRoot -RepoRoot $repoRoot -BuildDirPath $buildDirPath
 $windeployqtExe = Find-WinDeployQt -QtRoot $qtRoot
 
-$versionSuffix = if ([string]::IsNullOrWhiteSpace($Version)) { "local" } else { $Version.Trim() }
+$versionSuffix = Normalize-VersionSuffix -Value $Version
 $packageFolderName = "ASnap-windows-x64-$versionSuffix"
 $packageRoot = Join-Path $outputDirPath $packageFolderName
 $zipPath = Join-Path $outputDirPath "$packageFolderName.zip"

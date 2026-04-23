@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <memory>
 
 #include <QApplication>
@@ -54,7 +55,7 @@ private slots:
     void settingsDialogCanRestoreAutomaticTextColor();
     void settingsDialogCanRestoreAutomaticBorderColor();
     void settingsDialogPersistsTransparentPanelColor();
-    void settingsDialogPreviewReflectsLatestAppearanceChoices();
+    void settingsDialogKeepsLatestAppearanceChoicesWithoutLivePreview();
     void settingsDialogUsesScrollableCompactLayout();
     void settingsDialogHasMinimumSizeToPreventOcclusion();
     void settingsDialogShortcutFieldsShareSingleRow();
@@ -81,11 +82,9 @@ private slots:
     void settingsDialogActionStatusUsesSingleCompactLine();
     void settingsDialogShowsExplicitModelActionFeedback();
     void settingsDialogCanApplyFetchedModelChoices();
-    void settingsDialogPreviewUsesChatLikeMock();
-    void settingsDialogPreviewWidgetsDoNotTakeFocus();
+    void settingsDialogOmitsLivePreviewSection();
     void settingsDialogRestoresSavedSize();
     void settingsDialogRestoresSavedPosition();
-    void settingsDialogPreviewComposerMatchesFloatingChatLayout();
     void settingsDialogSaveKeepsDialogOpenAndEmitsSignal();
     void bindSessionRendersCurrentHistory();
     void defaultPanelWindowSizeIsCompact();
@@ -338,7 +337,7 @@ void UiWidgetTests::settingsDialogPersistsTransparentPanelColor() {
     QVERIFY(dialog.panelColorButton()->text().contains(QStringLiteral("#80335577"), Qt::CaseInsensitive));
 }
 
-void UiWidgetTests::settingsDialogPreviewReflectsLatestAppearanceChoices() {
+void UiWidgetTests::settingsDialogKeepsLatestAppearanceChoicesWithoutLivePreview() {
     SettingsDialog dialog(AppConfig{});
     dialog.setPanelColor(QColor(QStringLiteral("#66223344")));
     dialog.setPanelTextColor(QColor(QStringLiteral("#f9fafb")));
@@ -346,10 +345,13 @@ void UiWidgetTests::settingsDialogPreviewReflectsLatestAppearanceChoices() {
     dialog.opacityField()->setValue(55.0);
     dialog.applyAppearance(QStringLiteral("dark"));
 
-    QVERIFY(dialog.previewSurface()->property("previewColor").toString().contains(QStringLiteral("#66223344"), Qt::CaseInsensitive));
-    QVERIFY(dialog.previewSurface()->property("previewBorderColor").toString().contains(QStringLiteral("#6b7280"), Qt::CaseInsensitive));
-    QVERIFY(dialog.previewSurface()->property("previewOpacity").toDouble() > 0.5);
-    QVERIFY(dialog.previewTitleLabel()->styleSheet().contains(QStringLiteral("#f9fafb"), Qt::CaseInsensitive));
+    const AppConfig current = dialog.currentConfig();
+    QCOMPARE(current.panelColor, QStringLiteral("#66223344"));
+    QCOMPARE(current.panelTextColor, QStringLiteral("#f9fafb"));
+    QCOMPARE(current.panelBorderColor, QStringLiteral("#6b7280"));
+    QVERIFY(qAbs(current.opacity - 0.55) < 0.001);
+    QVERIFY(dialog.panelTextColorButton()->text().contains(QStringLiteral("#F9FAFB"), Qt::CaseInsensitive));
+    QVERIFY(dialog.panelBorderColorButton()->text().contains(QStringLiteral("#6B7280"), Qt::CaseInsensitive));
 }
 
 void UiWidgetTests::settingsDialogUsesScrollableCompactLayout() {
@@ -745,13 +747,13 @@ void UiWidgetTests::settingsDialogActionStartKeepsVisibleSectionAtSameViewportOf
     QVERIFY(scrollArea != nullptr);
     QVERIFY(scrollArea->viewport() != nullptr);
     QVERIFY(scrollArea->verticalScrollBar() != nullptr);
-    QVERIFY(dialog.previewSurface() != nullptr);
+    QVERIFY(dialog.panelColorButton() != nullptr);
 
     scrollArea->verticalScrollBar()->setValue(120);
     QCoreApplication::processEvents();
 
-    const int previewTopBefore =
-        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+    const int anchorTopBefore =
+        dialog.panelColorButton()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
 
     connect(&dialog,
             &SettingsDialog::fetchModelsRequested,
@@ -766,11 +768,11 @@ void UiWidgetTests::settingsDialogActionStartKeepsVisibleSectionAtSameViewportOf
     QCoreApplication::processEvents();
     QTest::qWait(30);
 
-    const int previewTopAfter =
-        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+    const int anchorTopAfter =
+        dialog.panelColorButton()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
 
     QCOMPARE(scrollArea->verticalScrollBar()->value(), 120);
-    QCOMPARE(previewTopAfter, previewTopBefore);
+    QCOMPARE(anchorTopAfter, anchorTopBefore);
 }
 
 void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotShiftVisibleSection() {
@@ -787,13 +789,13 @@ void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotShiftVisibleSection
     QVERIFY(scrollArea != nullptr);
     QVERIFY(scrollArea->viewport() != nullptr);
     QVERIFY(scrollArea->verticalScrollBar() != nullptr);
-    QVERIFY(dialog.previewSurface() != nullptr);
+    QVERIFY(dialog.panelColorButton() != nullptr);
 
     scrollArea->verticalScrollBar()->setValue(120);
     QCoreApplication::processEvents();
 
-    const int previewTopBefore =
-        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+    const int anchorTopBefore =
+        dialog.panelColorButton()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
 
     connect(&dialog,
             &SettingsDialog::fetchModelsRequested,
@@ -812,11 +814,11 @@ void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotShiftVisibleSection
     QCoreApplication::processEvents();
     QTest::qWait(140);
 
-    const int previewTopAfter =
-        dialog.previewSurface()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
+    const int anchorTopAfter =
+        dialog.panelColorButton()->mapTo(scrollArea->viewport(), QPoint(0, 0)).y();
 
     QCOMPARE(scrollArea->verticalScrollBar()->value(), 120);
-    QCOMPARE(previewTopAfter, previewTopBefore);
+    QCOMPARE(anchorTopAfter, anchorTopBefore);
 }
 
 void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotPushScrollViewportDown() {
@@ -832,10 +834,10 @@ void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotPushScrollViewportD
     auto* scrollArea = dialog.findChild<QScrollArea*>();
     QVERIFY(scrollArea != nullptr);
     QVERIFY(scrollArea->viewport() != nullptr);
-    QVERIFY(dialog.previewSurface() != nullptr);
+    QVERIFY(dialog.panelColorButton() != nullptr);
 
     const int viewportTopBefore = scrollArea->mapTo(&dialog, QPoint(0, 0)).y();
-    const int previewTopBefore = dialog.previewSurface()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int anchorTopBefore = dialog.panelColorButton()->mapTo(&dialog, QPoint(0, 0)).y();
 
     dialog.setBusy(false,
                    QStringLiteral("测试失败：服务当前限流（HTTP 429），请稍后再试，或更换模型 / 线路。"));
@@ -843,10 +845,10 @@ void UiWidgetTests::settingsDialogLongCompletionStatusDoesNotPushScrollViewportD
     QTest::qWait(60);
 
     const int viewportTopAfter = scrollArea->mapTo(&dialog, QPoint(0, 0)).y();
-    const int previewTopAfter = dialog.previewSurface()->mapTo(&dialog, QPoint(0, 0)).y();
+    const int anchorTopAfter = dialog.panelColorButton()->mapTo(&dialog, QPoint(0, 0)).y();
 
     QCOMPARE(viewportTopAfter, viewportTopBefore);
-    QCOMPARE(previewTopAfter, previewTopBefore);
+    QCOMPARE(anchorTopAfter, anchorTopBefore);
 }
 
 void UiWidgetTests::settingsDialogProviderActionsRemainPinnedWhenSettingsContentScrolls() {
@@ -958,28 +960,16 @@ void UiWidgetTests::settingsDialogCanApplyFetchedModelChoices() {
     QCOMPARE(dialog.modelField()->currentText(), QStringLiteral("custom-model"));
 }
 
-void UiWidgetTests::settingsDialogPreviewUsesChatLikeMock() {
+void UiWidgetTests::settingsDialogOmitsLivePreviewSection() {
     SettingsDialog dialog(AppConfig{});
 
-    QVERIFY(dialog.previewHistoryView() != nullptr);
-    QVERIFY(dialog.previewInputPreviewField() != nullptr);
-    QVERIFY(dialog.previewSendButton() != nullptr);
-    QCOMPARE(dialog.previewSendButton()->text(), QStringLiteral("↑"));
-    QVERIFY(dialog.previewHistoryView()->toPlainText().contains(QStringLiteral("示例回答")));
-    QVERIFY(dialog.previewHistoryView()->toPlainText().contains(QStringLiteral("const int answer = 42;")));
-    QVERIFY(dialog.previewInputPreviewField()->placeholderText().contains(QStringLiteral("继续追问")));
-}
-
-void UiWidgetTests::settingsDialogPreviewWidgetsDoNotTakeFocus() {
-    SettingsDialog dialog(AppConfig{});
-
-    QVERIFY(dialog.previewHistoryView() != nullptr);
-    QVERIFY(dialog.previewInputPreviewField() != nullptr);
-    QVERIFY(dialog.previewSendButton() != nullptr);
-
-    QCOMPARE(dialog.previewHistoryView()->focusPolicy(), Qt::NoFocus);
-    QCOMPARE(dialog.previewInputPreviewField()->focusPolicy(), Qt::NoFocus);
-    QCOMPARE(dialog.previewSendButton()->focusPolicy(), Qt::NoFocus);
+    QVERIFY(dialog.findChild<QFrame*>(QStringLiteral("previewShell")) == nullptr);
+    QVERIFY(dialog.findChild<QFrame*>(QStringLiteral("previewSurface")) == nullptr);
+    QVERIFY(dialog.findChild<QFrame*>(QStringLiteral("previewComposerShell")) == nullptr);
+    const auto labels = dialog.findChildren<QLabel*>();
+    QVERIFY(std::none_of(labels.cbegin(), labels.cend(), [](const QLabel* label) {
+        return label != nullptr && label->text() == QStringLiteral("真实聊天框预览");
+    }));
 }
 
 void UiWidgetTests::settingsDialogRestoresSavedSize() {
@@ -1001,21 +991,6 @@ void UiWidgetTests::settingsDialogRestoresSavedPosition() {
     QCoreApplication::processEvents();
 
     QCOMPARE(dialog.pos(), QPoint(180, 140));
-}
-
-void UiWidgetTests::settingsDialogPreviewComposerMatchesFloatingChatLayout() {
-    SettingsDialog dialog(AppConfig{});
-    dialog.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&dialog));
-    QCoreApplication::processEvents();
-
-    QVERIFY(dialog.previewComposerShell() != nullptr);
-    QVERIFY(dialog.previewInputPreviewField() != nullptr);
-    QVERIFY(dialog.previewSendButton() != nullptr);
-    QCOMPARE(dialog.previewInputPreviewField()->parentWidget(), dialog.previewComposerShell());
-    QCOMPARE(dialog.previewSendButton()->parentWidget(), dialog.previewComposerShell());
-    QVERIFY(dialog.previewInputPreviewField()->styleSheet().contains(QStringLiteral("background: transparent")));
-    QVERIFY(dialog.previewSendButton()->styleSheet().contains(QStringLiteral("border: none")));
 }
 
 void UiWidgetTests::settingsDialogSaveKeepsDialogOpenAndEmitsSignal() {
@@ -1601,7 +1576,7 @@ void UiWidgetTests::floatingPanelKeepsDarkChromeForDarkCustomSurface() {
 void UiWidgetTests::floatingPanelKeepsManualScrollPositionWhileStreaming() {
     auto session = std::make_shared<ChatSession>();
     session->beginWithCapture(QByteArray("png-image"));
-    for (int index = 0; index < 18; ++index) {
+    for (int index = 0; index < 22; ++index) {
         session->addUserText(QStringLiteral("Question %1").arg(index));
         session->addAssistantText(QStringLiteral("Answer %1\nline a\nline b\nline c\nline d").arg(index));
     }
@@ -1617,16 +1592,30 @@ void UiWidgetTests::floatingPanelKeepsManualScrollPositionWhileStreaming() {
     QVERIFY(scrollBar != nullptr);
     QTRY_VERIFY(scrollBar->maximum() > 0);
 
-    scrollBar->setValue(scrollBar->maximum() / 2);
+    session->beginAssistantResponse();
+    panel.scheduleSessionRefresh();
+    QCoreApplication::processEvents();
+
+    scrollBar->setValue(scrollBar->maximum() / 3);
+    QCoreApplication::processEvents();
     const int preservedValue = scrollBar->value();
+    QVERIFY(preservedValue > 0);
     QVERIFY(preservedValue < scrollBar->maximum());
 
-    session->beginAssistantResponse();
-    session->appendAssistantTextDelta(QStringLiteral("流式新增内容"));
-    panel.scheduleSessionRefresh();
+    int furthestManualDrift = 0;
+    for (int index = 0; index < 14; ++index) {
+        session->appendAssistantTextDelta(
+            QStringLiteral("stream line %1\nextra a\nextra b\nextra c\nextra d\n")
+                .arg(index));
+        panel.scheduleSessionRefresh();
+        QTest::qWait(35);
+        furthestManualDrift = qMax(furthestManualDrift, qAbs(scrollBar->value() - preservedValue));
+    }
 
-    QTRY_VERIFY(scrollBar->value() <= preservedValue + 8);
+    QTRY_VERIFY(qAbs(scrollBar->value() - preservedValue) <= 8);
     QVERIFY(scrollBar->value() < scrollBar->maximum());
+    QVERIFY2(furthestManualDrift <= 16,
+             qPrintable(QStringLiteral("manual scroll drifted by %1 px").arg(furthestManualDrift)));
 }
 
 void UiWidgetTests::floatingPanelAutoFollowStaysNearBottomWhileStreaming() {

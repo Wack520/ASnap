@@ -8,7 +8,7 @@ Windows 桌面 AI 截图助手。
     <img src="https://img.shields.io/badge/Download-Windows%20Installer-4f8cff?style=for-the-badge" alt="Download Windows Installer" />
   </a>
   <a href="https://github.com/Wack520/ASnap/releases">
-    <img src="https://img.shields.io/badge/Releases-v0.1.3-111827?style=for-the-badge" alt="Releases" />
+    <img src="https://img.shields.io/badge/Releases-v0.1.4-111827?style=for-the-badge" alt="Releases" />
   </a>
   <a href="https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/Wack520/ASnap/windows-ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" />

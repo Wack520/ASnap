@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Package version suffix, e.g. v0.1.0-preview1"
+        description: "Package version suffix, e.g. 0.1.4 or 0.1.4-rc1 (leading v optional)"
         required: false
         default: "manual"
 
@@ -42,16 +42,23 @@ jobs:
         id: version
         shell: pwsh
         run: |
-          $versionValue = ""
+          $rawVersionValue = ""
           if ($env:GITHUB_REF_TYPE -eq "tag" -and -not [string]::IsNullOrWhiteSpace($env:GITHUB_REF_NAME)) {
-            $versionValue = $env:GITHUB_REF_NAME
+            $rawVersionValue = $env:GITHUB_REF_NAME
           } elseif (-not [string]::IsNullOrWhiteSpace("${{ github.event.inputs.version }}")) {
-            $versionValue = "${{ github.event.inputs.version }}"
+            $rawVersionValue = "${{ github.event.inputs.version }}"
           } else {
-            $versionValue = "manual"
+            $rawVersionValue = "manual"
           }
-          "value=$versionValue" >> $env:GITHUB_OUTPUT
-          if ($versionValue -match 'preview|alpha|beta|rc') {
+
+          $packageVersionValue = $rawVersionValue.Trim()
+          if ($packageVersionValue -match '^[vV](\d.*)$') {
+            $packageVersionValue = $Matches[1]
+          }
+
+          "display_value=$rawVersionValue" >> $env:GITHUB_OUTPUT
+          "package_value=$packageVersionValue" >> $env:GITHUB_OUTPUT
+          if ($rawVersionValue -match 'preview|alpha|beta|rc') {
             "is_prerelease=true" >> $env:GITHUB_OUTPUT
           } else {
             "is_prerelease=false" >> $env:GITHUB_OUTPUT
@@ -62,14 +69,14 @@ jobs:
         run: >
           .\scripts\package-windows.ps1
           -Configuration Release
-          -Version "${{ steps.version.outputs.value }}"
+          -Version "${{ steps.version.outputs.package_value }}"
           -RunTests
           -CreateInstaller
 
       - name: Upload packaged artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ASnap-${{ steps.version.outputs.value }}-windows-x64
+          name: ASnap-${{ steps.version.outputs.package_value }}-windows-x64
           path: |
             dist/*.exe
 
@@ -94,17 +101,35 @@ jobs:
 
           ## 本次整理
 
-          - 清理公开仓库结构，移除旧版本原型代码
-          - Release 页面仅保留安装器主下载项
-          - 安装器保留中文体验，恢复默认现代向导样式
+          - 包含当前稳定版的最新界面与交互修复
+          - Release 页面只保留一个 Windows 安装器 EXE，避免重复 installer 混淆
+          - 安装器保留中文体验与现代向导样式
           - 安装时支持手动选择安装路径
           "@ | Set-Content dist/release-notes.md -Encoding utf8
+
+      - name: Remove stale installer assets
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          $tagName = "${{ steps.version.outputs.display_value }}"
+          $release = gh release view $tagName --json assets 2>$null | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $null -eq $release) {
+            exit 0
+          }
+
+          foreach ($asset in @($release.assets)) {
+            if ($asset.name -like 'ASnap-Setup-windows-x64-*.exe') {
+              gh release delete-asset $tagName $asset.name --yes
+            }
+          }
 
       - name: Publish GitHub Release
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
         with:
-          name: ASnap ${{ steps.version.outputs.value }}
+          name: ASnap ${{ steps.version.outputs.display_value }}
           body_path: dist/release-notes.md
           prerelease: ${{ steps.version.outputs.is_prerelease == 'true' }}
           files: |

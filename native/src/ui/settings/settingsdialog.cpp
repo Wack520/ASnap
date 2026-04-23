@@ -449,9 +449,6 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
             &SettingsDialog::testImageUnderstandingRequested);
 
     refreshModelActionUi();
-    if (appearanceSection_ != nullptr) {
-        appearanceSection_->refreshPreview();
-    }
 }
 
 QComboBox* SettingsDialog::themeField() const noexcept {
@@ -480,30 +477,6 @@ QPushButton* SettingsDialog::panelBorderColorButton() const noexcept {
 
 QPushButton* SettingsDialog::panelBorderAutoButton() const noexcept {
     return appearanceSection_ != nullptr ? appearanceSection_->panelBorderAutoButton() : nullptr;
-}
-
-QFrame* SettingsDialog::previewSurface() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewSurface() : nullptr;
-}
-
-QFrame* SettingsDialog::previewComposerShell() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewComposerShell() : nullptr;
-}
-
-QLabel* SettingsDialog::previewTitleLabel() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewTitleLabel() : nullptr;
-}
-
-QTextBrowser* SettingsDialog::previewHistoryView() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewHistoryView() : nullptr;
-}
-
-QLineEdit* SettingsDialog::previewInputPreviewField() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewInputField() : nullptr;
-}
-
-QPushButton* SettingsDialog::previewSendButton() const noexcept {
-    return appearanceSection_ != nullptr ? appearanceSection_->previewSendButton() : nullptr;
 }
 
 ProviderProfile SettingsDialog::currentProfile() const {
@@ -556,7 +529,6 @@ void SettingsDialog::applyAppearance(const QString& theme) {
     applyImmersiveDarkTitleBar(this, effectiveThemeName(theme) == QStringLiteral("dark"));
     if (appearanceSection_ != nullptr) {
         appearanceSection_->refreshColorButtons();
-        appearanceSection_->refreshPreview();
     }
 }
 

@@ -5,12 +5,7 @@
 
 class QComboBox;
 class QDoubleSpinBox;
-class QFrame;
-class QLabel;
-class QLineEdit;
 class QPushButton;
-class QTextBrowser;
-class QToolButton;
 
 namespace ais::ui {
 
@@ -24,7 +19,6 @@ public:
     void restoreAutomaticTextColor();
     void restoreAutomaticBorderColor();
     void refreshColorButtons();
-    void refreshPreview();
     void setBusy(bool busy);
 
     [[nodiscard]] QComboBox* themeField() const noexcept { return themeField_; }
@@ -34,12 +28,6 @@ public:
     [[nodiscard]] QPushButton* panelTextAutoButton() const noexcept { return panelTextAutoButton_; }
     [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept { return panelBorderColorButton_; }
     [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept { return panelBorderAutoButton_; }
-    [[nodiscard]] QFrame* previewSurface() const noexcept { return previewSurface_; }
-    [[nodiscard]] QFrame* previewComposerShell() const noexcept { return previewComposerShell_; }
-    [[nodiscard]] QLabel* previewTitleLabel() const noexcept { return previewTitleLabel_; }
-    [[nodiscard]] QTextBrowser* previewHistoryView() const noexcept { return previewHistoryView_; }
-    [[nodiscard]] QLineEdit* previewInputField() const noexcept { return previewInputField_; }
-    [[nodiscard]] QPushButton* previewSendButton() const noexcept { return previewSendButton_; }
 
     [[nodiscard]] QColor panelColor() const noexcept { return panelColor_; }
     [[nodiscard]] QColor panelTextColor() const noexcept { return panelTextColor_; }
@@ -60,14 +48,6 @@ private:
     QPushButton* panelTextAutoButton_ = nullptr;
     QPushButton* panelBorderColorButton_ = nullptr;
     QPushButton* panelBorderAutoButton_ = nullptr;
-    QFrame* previewSurface_ = nullptr;
-    QLabel* previewTitleLabel_ = nullptr;
-    QLabel* previewStatusLabel_ = nullptr;
-    QToolButton* previewReasoningToggle_ = nullptr;
-    QTextBrowser* previewHistoryView_ = nullptr;
-    QFrame* previewComposerShell_ = nullptr;
-    QLineEdit* previewInputField_ = nullptr;
-    QPushButton* previewSendButton_ = nullptr;
     QColor panelColor_;
     QColor panelTextColor_;
     bool panelTextColorCustomized_ = false;

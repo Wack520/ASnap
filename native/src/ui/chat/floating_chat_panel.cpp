@@ -17,6 +17,7 @@
 #include <QScrollBar>
 #include <QVBoxLayout>
 #include <QUrl>
+#include <QWheelEvent>
 
 #include "chat/chat_message.h"
 #include "ui/chat/chat_markdown_renderer.h"
@@ -41,6 +42,20 @@ constexpr int kPanelCornerRadius = 18;
                                    const QToolButton* closeButton) {
     return widget != nullptr &&
            (widget == minimizeButton || widget == closeButton);
+}
+
+[[nodiscard]] bool isHistoryNavigationKey(const int key) {
+    switch (key) {
+    case Qt::Key_Up:
+    case Qt::Key_Down:
+    case Qt::Key_PageUp:
+    case Qt::Key_PageDown:
+    case Qt::Key_Home:
+    case Qt::Key_End:
+        return true;
+    default:
+        return false;
+    }
 }
 
 }  // namespace
@@ -206,6 +221,35 @@ bool FloatingChatPanel::eventFilter(QObject* watched, QEvent* event) {
     QWidget* widget = qobject_cast<QWidget*>(watched);
     if (widget == nullptr || widget == this) {
         return QWidget::eventFilter(watched, event);
+    }
+
+    if (!suppressHistoryScrollTracking_ && historyView_ != nullptr) {
+        QScrollBar* const historyScrollBar = historyView_->verticalScrollBar();
+        const bool historyViewportHit =
+            watched == historyView_ || watched == historyView_->viewport();
+        const bool historyScrollBarHit = watched == historyScrollBar;
+        if (event != nullptr && historyScrollBar != nullptr) {
+            switch (event->type()) {
+            case QEvent::Wheel:
+                if (historyViewportHit || historyScrollBarHit) {
+                    historyAutoFollow_ = false;
+                }
+                break;
+            case QEvent::MouseButtonPress:
+                if (historyScrollBarHit) {
+                    historyAutoFollow_ = false;
+                }
+                break;
+            case QEvent::KeyPress:
+                if ((historyViewportHit || historyScrollBarHit) &&
+                    isHistoryNavigationKey(static_cast<QKeyEvent*>(event)->key())) {
+                    historyAutoFollow_ = false;
+                }
+                break;
+            default:
+                break;
+            }
+        }
     }
 
     switch (event->type()) {
@@ -460,8 +504,6 @@ void FloatingChatPanel::refreshHistory() {
         historyView_ != nullptr ? historyView_->verticalScrollBar() : nullptr;
     const int previousScrollValue = verticalScrollBar != nullptr ? verticalScrollBar->value() : 0;
     const int previousScrollMaximum = verticalScrollBar != nullptr ? verticalScrollBar->maximum() : 0;
-    const int previousDistanceFromBottom =
-        verticalScrollBar != nullptr ? qMax(0, previousScrollMaximum - previousScrollValue) : 0;
     const bool shouldFollowLatestMessage =
         verticalScrollBar == nullptr ||
         previousScrollMaximum <= 0 ||
@@ -490,7 +532,7 @@ void FloatingChatPanel::refreshHistory() {
     const auto restoreHistoryScrollPosition = [this,
                                                verticalScrollBar,
                                                shouldFollowLatestMessage,
-                                               previousDistanceFromBottom]() {
+                                               previousScrollValue]() {
         if (verticalScrollBar == nullptr) {
             return;
         }
@@ -501,7 +543,7 @@ void FloatingChatPanel::refreshHistory() {
             verticalScrollBar->setValue(verticalScrollBar->maximum());
             historyAutoFollow_ = true;
         } else {
-            verticalScrollBar->setValue(qMax(0, verticalScrollBar->maximum() - previousDistanceFromBottom));
+            verticalScrollBar->setValue(qMin(previousScrollValue, verticalScrollBar->maximum()));
             historyAutoFollow_ = (verticalScrollBar->maximum() - verticalScrollBar->value()) <= 12;
         }
         suppressHistoryScrollTracking_ = false;

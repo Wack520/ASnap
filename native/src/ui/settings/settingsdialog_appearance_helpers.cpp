@@ -73,18 +73,6 @@ QString serializeColor(const QColor& color) {
         : color.name(QColor::HexRgb);
 }
 
-QString cssColor(const QColor& color, int alpha) {
-    QColor actual = color;
-    if (alpha >= 0) {
-        actual.setAlpha(qBound(0, alpha, 255));
-    }
-    return QStringLiteral("rgba(%1,%2,%3,%4)")
-        .arg(actual.red())
-        .arg(actual.green())
-        .arg(actual.blue())
-        .arg(actual.alpha());
-}
-
 QString colorButtonStyle(const QColor& background,
                          const QColor& foreground,
                          const QString& theme) {
@@ -99,46 +87,6 @@ QString colorButtonStyle(const QColor& background,
              border.name(QColor::HexRgb));
 }
 
-QString previewDocumentCss(const QString& textColor,
-                           const QString& mutedColor,
-                           const QString& codeSurface,
-                           const QString& chromeSurface,
-                           const QString& lineColor) {
-    return QStringLiteral(
-        "body { font-family: 'Segoe UI Variable Text', 'Segoe UI', 'Microsoft YaHei UI', sans-serif; color: %1; background: transparent; }"
-        ".bubble { margin: 10px 0; }"
-        ".role { font-weight: 700; margin-bottom: 6px; }"
-        ".text { line-height: 1.55; }"
-        ".code-card { margin: 8px 0; border: 1px solid %5; border-radius: 10px; overflow: hidden; background: %3; }"
-        ".code-toolbar { display: flex; justify-content: space-between; padding: 6px 10px; background: %4; color: %2; }"
-        ".code-body { background: %3; border-top: 1px solid %5; padding: 10px 12px; }"
-        ".code-body pre, .code-body p { margin: 0; white-space: pre-wrap; font-family: 'Cascadia Code', 'Consolas', monospace; }"
-        ".code-copy { color: %1; }"
-        "a { color: %1; text-decoration: underline; }"
-        "table { margin-top: 8px; border-collapse: collapse; }"
-        "th, td { border: 1px solid %5; padding: 4px 8px; }")
-        .arg(textColor, mutedColor, codeSurface, chromeSurface, lineColor);
-}
-
-QString previewDocumentHtml(const QString& style) {
-    return QStringLiteral(
-        "<html><head><style>%1</style></head><body>"
-        "<div class='bubble assistant'>"
-        "<div class='role'>AI</div>"
-        "<div class='text'>这是示例回答：会随着你当前设置实时预览透明度、背景色、边框色、字体色和代码块效果。</div>"
-        "<div class='code-card'>"
-        "<div class='code-toolbar'><span>cpp</span><span class='code-copy'>复制</span></div>"
-        "<div class='code-body'><pre><code>const int answer = 42;</code></pre></div>"
-        "</div>"
-        "</div>"
-        "<div class='bubble user'>"
-        "<div class='role'>你</div>"
-        "<div class='text'>继续追问：这个按钮没反应时应该先看哪里？</div>"
-        "</div>"
-        "</body></html>")
-        .arg(style);
-}
-
 QString dialogStyleSheetForTheme(const QString& theme) {
     if (effectiveThemeName(theme) == QStringLiteral("light")) {
         return QStringLiteral(
@@ -149,7 +97,6 @@ QString dialogStyleSheetForTheme(const QString& theme) {
             "QLabel#settingsSubtitle { color: #5f6b7a; }"
             "QLabel#sectionTitle { font-size: 13px; font-weight: 700; color: #445162; margin-top: 4px; }"
             "QFrame#settingsCard { background-color: #ffffff; border: 1px solid #d8dee6; border-radius: 14px; }"
-            "QFrame#previewShell { background-color: #eef2f7; border: 1px solid #d8dee6; border-radius: 14px; }"
             "QLineEdit, QPlainTextEdit, QComboBox, QKeySequenceEdit, QAbstractSpinBox {"
             " background-color: #ffffff; color: #15181d; border: 1px solid #d0d7de; border-radius: 10px; padding: 7px 10px; selection-background-color: #0969da; selection-color: #ffffff; }"
             "QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus, QAbstractSpinBox:focus { border-color: #0969da; }"
@@ -174,7 +121,6 @@ QString dialogStyleSheetForTheme(const QString& theme) {
         "QLabel#settingsSubtitle { color: #98a1ac; }"
         "QLabel#sectionTitle { font-size: 13px; font-weight: 700; color: #d5dbe3; margin-top: 4px; }"
         "QFrame#settingsCard { background-color: rgba(19,21,23,232); border: 1px solid rgba(255,255,255,0.04); border-radius: 14px; }"
-        "QFrame#previewShell { background-color: rgba(14,16,18,214); border: 1px solid rgba(255,255,255,0.03); border-radius: 14px; }"
         "QLineEdit, QPlainTextEdit, QComboBox, QKeySequenceEdit, QAbstractSpinBox {"
         " background-color: rgba(255,255,255,0.018); color: #eef2f6; border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 7px 10px; selection-background-color: #2f3740; selection-color: #ffffff; }"
         "QLineEdit:focus, QPlainTextEdit:focus, QComboBox:focus, QKeySequenceEdit:focus, QAbstractSpinBox:focus { border-color: rgba(255,255,255,0.12); }"
