@@ -72,6 +72,13 @@ void ConversationRequestController::beginSession(QByteArray initialImage,
     bindSession();
 }
 
+void ConversationRequestController::beginTextSession(const QString& initialUserText) {
+    queuedFollowUpTexts_.clear();
+    currentSession_ = std::make_shared<chat::ChatSession>();
+    currentSession_->addUserText(initialUserText);
+    bindSession();
+}
+
 void ConversationRequestController::onFollowUpRequested(const QString& text) {
     if (currentSession_ == nullptr) {
         return;

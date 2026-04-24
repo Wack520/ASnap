@@ -8,7 +8,7 @@ Windows 桌面 AI 截图助手。
     <img src="https://img.shields.io/badge/Download-Windows%20Installer-4f8cff?style=for-the-badge" alt="Download Windows Installer" />
   </a>
   <a href="https://github.com/Wack520/ASnap/releases">
-    <img src="https://img.shields.io/badge/Releases-v0.1.4-111827?style=for-the-badge" alt="Releases" />
+    <img src="https://img.shields.io/github/v/release/Wack520/ASnap?display_name=tag&style=for-the-badge&label=Releases" alt="Releases" />
   </a>
   <a href="https://github.com/Wack520/ASnap/actions/workflows/windows-ci.yml">
     <img src="https://img.shields.io/github/actions/workflow/status/Wack520/ASnap/windows-ci.yml?branch=main&style=for-the-badge&label=CI" alt="CI" />
@@ -23,6 +23,7 @@ Windows 桌面 AI 截图助手。
 ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 
 - 先冻结屏幕，再自由框选
+- 先选中文字，再一键直接查询
 - 截图后直接在浮窗里追问
 - 支持 Markdown、代码块、表格和链接
 - 兼容 OpenAI、OpenAI Responses、OpenAI-compatible、Gemini、Claude
@@ -31,6 +32,7 @@ ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 ## 它能做什么
 
 - 全局快捷键触发截图，不打断当前桌面节奏
+- 选中文字后可直接发起文本查询，少一次截图和上传
 - 截图完成后，悬浮面板贴着选区出现，直接继续问
 - Markdown、代码块、链接、思考内容分区都能正常显示
 - 同时支持 OpenAI、OpenAI Responses、OpenAI-compatible、Gemini、Claude
@@ -40,7 +42,7 @@ ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 
 ### 截图
 - 托盘常驻
-- AI 截图 / 普通截图双快捷键
+- 文本直查 / AI 截图 / 普通截图三快捷键
 - 全屏冻结后自由框选
 - 双击直接全屏截图
 - `Esc` 取消
@@ -73,7 +75,7 @@ ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 ## 下载
 
 - Releases: https://github.com/Wack520/ASnap/releases
-- 下载 `ASnap-Setup-windows-x64-<version>.exe`
+- 只需要下载 `ASnap-Setup-windows-x64-<version>.exe`
 - 运行安装器即可，无需手动拷贝 Qt 运行库
 
 ## 从源码构建

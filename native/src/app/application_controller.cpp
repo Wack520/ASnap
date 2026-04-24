@@ -29,6 +29,7 @@
 #include "config/config_store.h"
 #include "config/provider_preset.h"
 #include "platform/windows/global_hotkey_host.h"
+#include "platform/windows/selected_text_query.h"
 #include "platform/windows/startup_registry.h"
 #include "ui/icon_factory.h"
 #include "ui/chat/floating_chat_panel.h"
@@ -90,6 +91,10 @@ namespace {
     }
 
     return error;
+}
+
+[[nodiscard]] QString selectedTextPrompt(const QString& text) {
+    return QStringLiteral("请简洁的解释这段文本：\n\n%1").arg(text);
 }
 
 }  // namespace
@@ -154,6 +159,9 @@ ApplicationController::~ApplicationController() {
     if (aiHotkeyHost_ != nullptr) {
         aiHotkeyHost_->unregisterHotkey();
     }
+    if (textQueryHotkeyHost_ != nullptr) {
+        textQueryHotkeyHost_->unregisterHotkey();
+    }
     if (screenshotHotkeyHost_ != nullptr) {
         screenshotHotkeyHost_->unregisterHotkey();
     }
@@ -197,16 +205,19 @@ bool ApplicationController::initialize() {
     createTray();
 
     aiHotkeyHost_ = new platform::windows::GlobalHotkeyHost(1, this);
-    screenshotHotkeyHost_ = new platform::windows::GlobalHotkeyHost(2, this);
+    textQueryHotkeyHost_ = new platform::windows::GlobalHotkeyHost(2, this);
+    screenshotHotkeyHost_ = new platform::windows::GlobalHotkeyHost(3, this);
     connect(aiHotkeyHost_, &platform::windows::GlobalHotkeyHost::triggered,
             this, &ApplicationController::startCapture);
+    connect(textQueryHotkeyHost_, &platform::windows::GlobalHotkeyHost::triggered,
+            this, &ApplicationController::startTextQuery);
     connect(screenshotHotkeyHost_, &platform::windows::GlobalHotkeyHost::triggered,
             this, &ApplicationController::startPlainCapture);
 
     if (!registerHotkeys() && trayIcon_ != nullptr) {
         trayIcon_->showMessage(
             ui::brandDisplayName(),
-            QStringLiteral("全局快捷键注册失败，请检查 AI 快捷键 / 截图快捷键是否冲突"),
+            QStringLiteral("全局快捷键注册失败，请检查 文本直查 / AI 截图 / 普通截图 是否冲突"),
             QSystemTrayIcon::Warning,
             3000);
     }
@@ -371,9 +382,17 @@ QString ApplicationController::lastAssistantReasoningForTest() const {
     return requestController_->lastAssistantReasoningForTest();
 }
 
+void ApplicationController::querySelectedTextForTest() {
+    startTextQueryWorkflow();
+}
+
 void ApplicationController::confirmCaptureForTest(const capture::CaptureSelection& selection, const bool sendToAi) {
     activeCaptureMode_ = sendToAi ? CaptureLaunchMode::AiAssistant : CaptureLaunchMode::PlainScreenshot;
     handleConfirmedCapture(selection);
+}
+
+void ApplicationController::startTextQuery() {
+    startTextQueryWorkflow();
 }
 
 void ApplicationController::startCapture() {
@@ -478,6 +497,38 @@ void ApplicationController::openSettings() {
     syncBusyUi();
 }
 
+void ApplicationController::startTextQueryWorkflow() {
+    if (guard_.state() == BusyState::TestingProvider || guard_.state() == BusyState::Capturing) {
+        return;
+    }
+
+    if (guard_.state() == BusyState::RequestInFlight) {
+        cancelCurrentConversation(false);
+    }
+
+    QString errorMessage;
+    const QString selectedText = [this, &errorMessage]() {
+        if (selectedTextReaderForTest_) {
+            return selectedTextReaderForTest_().trimmed();
+        }
+        return platform::windows::querySelectedText(&errorMessage).trimmed();
+    }();
+
+    if (selectedText.isEmpty()) {
+        const QString status = QStringLiteral("未检测到可查询文本，请改用截图查询");
+        syncBusyUi(status);
+        if (trayIcon_ != nullptr) {
+            trayIcon_->showMessage(ui::brandDisplayName(),
+                                   status,
+                                   QSystemTrayIcon::Information,
+                                   2000);
+        }
+        return;
+    }
+
+    beginSessionFromSelectedText(selectedText);
+}
+
 void ApplicationController::onCaptureConfirmed(const capture::CaptureSelection& selection) {
     clearOverlay();
     guard_.leave(BusyState::Capturing);
@@ -547,6 +598,9 @@ void ApplicationController::quitRequested() {
     (void)saveConfigSnapshot();
     if (aiHotkeyHost_ != nullptr) {
         aiHotkeyHost_->unregisterHotkey();
+    }
+    if (textQueryHotkeyHost_ != nullptr) {
+        textQueryHotkeyHost_->unregisterHotkey();
     }
     if (screenshotHotkeyHost_ != nullptr) {
         screenshotHotkeyHost_->unregisterHotkey();
@@ -634,12 +688,14 @@ void ApplicationController::createTray() {
 
     trayIcon_ = new QSystemTrayIcon(this);
     trayMenu_ = new QMenu(chatPanel_);
+    textQueryAction_ = trayMenu_->addAction(QStringLiteral("文本直查"));
     captureAction_ = trayMenu_->addAction(QStringLiteral("AI 截图"));
     screenshotAction_ = trayMenu_->addAction(QStringLiteral("普通截图"));
     settingsAction_ = trayMenu_->addAction(QStringLiteral("设置"));
     trayMenu_->addSeparator();
     quitAction_ = trayMenu_->addAction(QStringLiteral("退出"));
 
+    connect(textQueryAction_, &QAction::triggered, this, &ApplicationController::startTextQuery);
     connect(captureAction_, &QAction::triggered, this, &ApplicationController::startCapture);
     connect(screenshotAction_, &QAction::triggered, this, &ApplicationController::startPlainCapture);
     connect(settingsAction_, &QAction::triggered, this, &ApplicationController::openSettings);
@@ -668,13 +724,7 @@ void ApplicationController::loadConfig() {
 
 void ApplicationController::applyConfigDefaults() {
     config_.activeProfile = withDefaults(config_.activeProfile);
-
-    if (config_.aiShortcut.trimmed().isEmpty()) {
-        config_.aiShortcut = QStringLiteral("Ctrl+Shift+A");
-    }
-    if (config_.screenshotShortcut.trimmed().isEmpty()) {
-        config_.screenshotShortcut = QStringLiteral("Ctrl+Shift+S");
-    }
+    config::normalizeShortcutAssignments(config_);
 
     if (config_.theme != QStringLiteral("light") &&
         config_.theme != QStringLiteral("dark") &&
@@ -724,13 +774,16 @@ void ApplicationController::applyAppearance() {
 }
 
 bool ApplicationController::registerHotkeys() {
-    if (aiHotkeyHost_ == nullptr || screenshotHotkeyHost_ == nullptr) {
+    if (aiHotkeyHost_ == nullptr ||
+        textQueryHotkeyHost_ == nullptr ||
+        screenshotHotkeyHost_ == nullptr) {
         return false;
     }
 
+    const bool textQueryRegistered = textQueryHotkeyHost_->registerHotkey(config_.textQueryShortcut);
     const bool aiRegistered = aiHotkeyHost_->registerHotkey(config_.aiShortcut);
     const bool screenshotRegistered = screenshotHotkeyHost_->registerHotkey(config_.screenshotShortcut);
-    return aiRegistered && screenshotRegistered;
+    return textQueryRegistered && aiRegistered && screenshotRegistered;
 }
 
 void ApplicationController::clearOverlay() {
@@ -822,6 +875,38 @@ void ApplicationController::beginSessionFromSelection(const capture::CaptureSele
         requestController_->beginSession(encodePng(selectionImage), defaultFirstPrompt());
 
         if (!requestController_->startCurrentSessionRequest(QStringLiteral("Analyzing screenshot..."))) {
+            chatPanel_->bindSession(requestController_->session());
+            syncBusyUi(QStringLiteral("Unable to start AI request"));
+        }
+    });
+}
+
+void ApplicationController::beginSessionFromSelectedText(const QString& text) {
+    ensureChatPanel();
+    if (chatPanel_ == nullptr) {
+        syncBusyUi(QStringLiteral("Chat panel is unavailable"));
+        return;
+    }
+
+    if (requestController_ == nullptr) {
+        syncBusyUi(QStringLiteral("Request controller is unavailable"));
+        return;
+    }
+
+    chatPanel_->show();
+    chatPanel_->raise();
+    chatPanel_->activateWindow();
+    QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+    const QString prompt = selectedTextPrompt(text);
+    QTimer::singleShot(0, this, [this, prompt]() {
+        if (chatPanel_ == nullptr || !chatPanel_->isVisible() || requestController_ == nullptr) {
+            return;
+        }
+
+        requestController_->beginTextSession(prompt);
+
+        if (!requestController_->startCurrentSessionRequest(QStringLiteral("正在查询选中文本…"))) {
             chatPanel_->bindSession(requestController_->session());
             syncBusyUi(QStringLiteral("Unable to start AI request"));
         }
@@ -1024,6 +1109,9 @@ void ApplicationController::syncBusyUi(const QString& statusOverride) {
 
     if (captureAction_ != nullptr) {
         captureAction_->setEnabled(!busy);
+    }
+    if (textQueryAction_ != nullptr) {
+        textQueryAction_->setEnabled(!busy);
     }
 
     if (settingsDialog_ != nullptr) {

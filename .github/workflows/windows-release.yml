@@ -101,9 +101,9 @@ jobs:
 
           ## 更新
 
-          - 流式 Markdown 渲染更完整
-          - 长文本输出更稳，减少闪动和重复重绘
-          - Release 页面保持单一安装器下载入口
+          - 新增 Windows 文本直查：先选中文字，再按快捷键直接查询
+          - 文本直查默认快捷键为 Ctrl+Shift+A，AI 截图默认调整为 Ctrl+Shift+Q
+          - Release 页面继续只保留单一安装器入口，下载更清晰
           "@ | Set-Content dist/release-notes.md -Encoding utf8
 
       - name: Remove stale installer assets

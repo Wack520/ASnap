@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
 
-project(ai_screenshot_native VERSION 0.1.4 LANGUAGES CXX)
+project(ai_screenshot_native VERSION 0.1.7 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,6 +52,8 @@ add_library(ai_screenshot_core STATIC
     src/platform/windows/hotkey_chord.h
     src/platform/windows/native_screen_capture.cpp
     src/platform/windows/native_screen_capture.h
+    src/platform/windows/selected_text_query.cpp
+    src/platform/windows/selected_text_query.h
     src/platform/windows/windows_graphics_capture_backend.cpp
     src/platform/windows/windows_graphics_capture_backend.h
     src/platform/windows/startup_registry.cpp

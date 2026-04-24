@@ -198,6 +198,9 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelActionStatusLabel_->setWordWrap(false);
     reserveStableStatusHeight(modelActionStatusLabel_, 1);
 
+    textQueryShortcutField_ = new QKeySequenceEdit(this);
+    textQueryShortcutField_->setMaximumSequenceLength(1);
+
     aiShortcutField_ = new QKeySequenceEdit(this);
     aiShortcutField_->setMaximumSequenceLength(1);
 
@@ -281,11 +284,20 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     shortcutFieldsLayout->setContentsMargins(0, 0, 0, 0);
     shortcutFieldsLayout->setSpacing(8);
 
+    auto* textQueryShortcutColumn = new QWidget(shortcutFieldsRow);
+    auto* textQueryShortcutColumnLayout = new QVBoxLayout(textQueryShortcutColumn);
+    textQueryShortcutColumnLayout->setContentsMargins(0, 0, 0, 0);
+    textQueryShortcutColumnLayout->setSpacing(4);
+    auto* textQueryShortcutLabel = new QLabel(QStringLiteral("文本直查"), textQueryShortcutColumn);
+    textQueryShortcutLabel->setObjectName(QStringLiteral("settingsSubtitle"));
+    textQueryShortcutColumnLayout->addWidget(textQueryShortcutLabel);
+    textQueryShortcutColumnLayout->addWidget(textQueryShortcutField_);
+
     auto* aiShortcutColumn = new QWidget(shortcutFieldsRow);
     auto* aiShortcutColumnLayout = new QVBoxLayout(aiShortcutColumn);
     aiShortcutColumnLayout->setContentsMargins(0, 0, 0, 0);
     aiShortcutColumnLayout->setSpacing(4);
-    auto* aiShortcutLabel = new QLabel(QStringLiteral("AI"), aiShortcutColumn);
+    auto* aiShortcutLabel = new QLabel(QStringLiteral("AI 截图"), aiShortcutColumn);
     aiShortcutLabel->setObjectName(QStringLiteral("settingsSubtitle"));
     aiShortcutColumnLayout->addWidget(aiShortcutLabel);
     aiShortcutColumnLayout->addWidget(aiShortcutField_);
@@ -299,6 +311,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     screenshotShortcutColumnLayout->addWidget(screenshotShortcutLabel);
     screenshotShortcutColumnLayout->addWidget(screenshotShortcutField_);
 
+    shortcutFieldsLayout->addWidget(textQueryShortcutColumn, 1);
     shortcutFieldsLayout->addWidget(aiShortcutColumn, 1);
     shortcutFieldsLayout->addWidget(screenshotShortcutColumn, 1);
     providerForm->addRow(QStringLiteral("快捷键"), shortcutFieldsRow);
@@ -371,6 +384,8 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
         modelField_->addItem(config.activeProfile.model.trimmed());
     }
 
+    textQueryShortcutField_->setKeySequence(
+        QKeySequence::fromString(config.textQueryShortcut, QKeySequence::PortableText));
     aiShortcutField_->setKeySequence(QKeySequence::fromString(config.aiShortcut, QKeySequence::PortableText));
     screenshotShortcutField_->setKeySequence(
         QKeySequence::fromString(config.screenshotShortcut, QKeySequence::PortableText));
@@ -492,16 +507,22 @@ AppConfig SettingsDialog::currentConfig() const {
     AppConfig config = initialConfig_;
     config.activeProfile = currentProfile();
 
+    const QString textQueryShortcutText =
+        textQueryShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
     const QString aiShortcutText = aiShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
     const QString screenshotShortcutText =
         screenshotShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
 
+    config.textQueryShortcut = textQueryShortcutText.isEmpty()
+        ? ais::config::defaultTextQueryShortcut()
+        : textQueryShortcutText;
     config.aiShortcut = aiShortcutText.isEmpty()
-        ? QStringLiteral("Ctrl+Shift+A")
+        ? ais::config::defaultAiCaptureShortcut()
         : aiShortcutText;
     config.screenshotShortcut = screenshotShortcutText.isEmpty()
-        ? QStringLiteral("Ctrl+Shift+S")
+        ? ais::config::defaultScreenshotShortcut()
         : screenshotShortcutText;
+    ais::config::normalizeShortcutAssignments(config);
     config.captureMode = captureModeField_ != nullptr
         ? static_cast<ais::capture::CaptureMode>(captureModeField_->currentData().toInt())
         : ais::capture::CaptureMode::Standard;
@@ -654,6 +675,7 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
              static_cast<QWidget*>(modelField_),
              static_cast<QWidget*>(modelPopupButton_),
              static_cast<QWidget*>(captureModeField_),
+             static_cast<QWidget*>(textQueryShortcutField_),
              static_cast<QWidget*>(aiShortcutField_),
              static_cast<QWidget*>(screenshotShortcutField_),
              static_cast<QWidget*>(firstPromptField_),

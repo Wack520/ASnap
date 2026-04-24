@@ -54,6 +54,7 @@ public:
 
     void beginSession(QByteArray initialImage,
                       const QString& initialUserText);
+    void beginTextSession(const QString& initialUserText);
     [[nodiscard]] bool hasSession() const noexcept { return currentSession_ != nullptr; }
     [[nodiscard]] const std::shared_ptr<chat::ChatSession>& session() const noexcept { return currentSession_; }
 

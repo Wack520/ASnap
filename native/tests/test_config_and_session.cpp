@@ -23,6 +23,8 @@ class ConfigAndSessionTests final : public QObject {
 private slots:
     void configRoundTripsActiveProfile();
     void configRoundTripsCaptureMode();
+    void configRoundTripsTextQueryShortcut();
+    void configMigratesLegacyAiShortcutToDedicatedTextQueryShortcut();
     void configRoundTripsCustomFirstPrompt();
     void configMigratesLegacyDefaultFirstPromptV1();
     void configMigratesLegacyDefaultFirstPromptV2();
@@ -48,7 +50,8 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     expected.activeProfile.baseUrl = QStringLiteral("https://api.example.test/v1");
     expected.activeProfile.apiKey = QStringLiteral("top-secret");
     expected.activeProfile.model = QStringLiteral("gpt-test");
-    expected.aiShortcut = QStringLiteral("Ctrl+Shift+A");
+    expected.textQueryShortcut = QStringLiteral("Ctrl+Shift+A");
+    expected.aiShortcut = QStringLiteral("Ctrl+Shift+Q");
     expected.screenshotShortcut = QStringLiteral("Ctrl+Shift+S");
     expected.theme = QStringLiteral("night");
     expected.opacity = 0.72;
@@ -68,6 +71,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     QCOMPARE(loaded.activeProfile.baseUrl, expected.activeProfile.baseUrl);
     QCOMPARE(loaded.activeProfile.apiKey, expected.activeProfile.apiKey);
     QCOMPARE(loaded.activeProfile.model, expected.activeProfile.model);
+    QCOMPARE(loaded.textQueryShortcut, expected.textQueryShortcut);
     QCOMPARE(loaded.aiShortcut, expected.aiShortcut);
     QCOMPARE(loaded.screenshotShortcut, expected.screenshotShortcut);
     QCOMPARE(loaded.theme, expected.theme);
@@ -96,6 +100,46 @@ void ConfigAndSessionTests::configRoundTripsCaptureMode() {
     const AppConfig loaded = store.load();
     QCOMPARE(static_cast<int>(loaded.captureMode),
              static_cast<int>(expected.captureMode));
+}
+
+void ConfigAndSessionTests::configRoundTripsTextQueryShortcut() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    ConfigStore store(tempDir.filePath("app-config.json"));
+
+    AppConfig expected;
+    expected.textQueryShortcut = QStringLiteral("Ctrl+Shift+A");
+    expected.aiShortcut = QStringLiteral("Ctrl+Shift+Q");
+    expected.screenshotShortcut = QStringLiteral("Ctrl+Shift+S");
+
+    QVERIFY(store.save(expected));
+
+    const AppConfig loaded = store.load();
+    QCOMPARE(loaded.textQueryShortcut, expected.textQueryShortcut);
+    QCOMPARE(loaded.aiShortcut, expected.aiShortcut);
+    QCOMPARE(loaded.screenshotShortcut, expected.screenshotShortcut);
+}
+
+void ConfigAndSessionTests::configMigratesLegacyAiShortcutToDedicatedTextQueryShortcut() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    const QString filePath = tempDir.filePath("app-config.json");
+    QFile file(filePath);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write(R"({
+  "aiShortcut": "Ctrl+Shift+A",
+  "screenshotShortcut": "Ctrl+Shift+S"
+})");
+    file.close();
+
+    ConfigStore store(filePath);
+    const AppConfig loaded = store.load();
+
+    QCOMPARE(loaded.textQueryShortcut, QStringLiteral("Ctrl+Shift+A"));
+    QCOMPARE(loaded.aiShortcut, QStringLiteral("Ctrl+Shift+Q"));
+    QCOMPARE(loaded.screenshotShortcut, QStringLiteral("Ctrl+Shift+S"));
 }
 
 void ConfigAndSessionTests::configRoundTripsCustomFirstPrompt() {

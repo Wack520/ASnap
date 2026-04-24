@@ -54,6 +54,7 @@ public:
     [[nodiscard]] QToolButton* modelPopupButton() const noexcept { return modelPopupButton_; }
     [[nodiscard]] QPushButton* fetchModelsButton() const noexcept { return fetchModelsButton_; }
     [[nodiscard]] QComboBox* captureModeField() const noexcept { return captureModeField_; }
+    [[nodiscard]] QKeySequenceEdit* textQueryShortcutField() const noexcept { return textQueryShortcutField_; }
     [[nodiscard]] QKeySequenceEdit* aiShortcutField() const noexcept { return aiShortcutField_; }
     [[nodiscard]] QKeySequenceEdit* screenshotShortcutField() const noexcept { return screenshotShortcutField_; }
     [[nodiscard]] QComboBox* themeField() const noexcept;
@@ -98,6 +99,7 @@ private:
     QPushButton* fetchModelsButton_ = nullptr;
     QLabel* modelActionStatusLabel_ = nullptr;
     QComboBox* captureModeField_ = nullptr;
+    QKeySequenceEdit* textQueryShortcutField_ = nullptr;
     QKeySequenceEdit* aiShortcutField_ = nullptr;
     QKeySequenceEdit* screenshotShortcutField_ = nullptr;
     SettingsDialogAppearanceSection* appearanceSection_ = nullptr;

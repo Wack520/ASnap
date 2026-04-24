@@ -34,6 +34,8 @@ private slots:
     void imageConversationEmptyResponseWaitsBeforeRetrying();
     void assetUploadFailureFallsBackToOpenAiCompatibleOnce();
     void reasoningOnlyAssistantResponseDoesNotRetry();
+    void textQueryStartsConversationFromSelectedText();
+    void textQueryFailureShowsGuidanceMessage();
     void plainCaptureCopiesScreenshotToClipboard();
 };
 
@@ -381,6 +383,44 @@ void ApplicationControllerTests::reasoningOnlyAssistantResponseDoesNotRetry() {
     QCOMPARE(controller.lastAssistantMessageTextForTest(), QString());
     QCOMPARE(controller.lastAssistantReasoningForTest(), QStringLiteral("仅有思考，没有正文"));
     QCOMPARE(controller.lastStatusTextForTest(), QStringLiteral("Ready"));
+}
+
+void ApplicationControllerTests::textQueryStartsConversationFromSelectedText() {
+    ApplicationController controller;
+    int requestStartCount = 0;
+
+    controller.setSelectedTextReaderForTest([]() {
+        return QStringLiteral("SELECT * FROM users WHERE id = 1");
+    });
+    controller.setRequestStreamStarterForTest(
+        [&](const ais::config::ProviderProfile&,
+            const QList<ais::chat::ChatMessage>&,
+            ais::ai::AiClient::DeltaHandler,
+            ais::ai::AiClient::DeltaHandler,
+            ais::ai::AiClient::CompletionHandler,
+            ais::ai::AiClient::FailureHandler,
+            int) {
+            requestStartCount += 1;
+            return true;
+        });
+
+    controller.querySelectedTextForTest();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(requestStartCount, 1);
+    QCOMPARE(controller.lastUserMessageTextForTest(),
+             QStringLiteral("请简洁的解释这段文本：\n\nSELECT * FROM users WHERE id = 1"));
+}
+
+void ApplicationControllerTests::textQueryFailureShowsGuidanceMessage() {
+    ApplicationController controller;
+
+    controller.setSelectedTextReaderForTest([]() { return QString(); });
+    controller.querySelectedTextForTest();
+
+    QCOMPARE(controller.lastStatusTextForTest(),
+             QStringLiteral("未检测到可查询文本，请改用截图查询"));
+    QCOMPARE(controller.messageCountForTest(), 0);
 }
 
 void ApplicationControllerTests::plainCaptureCopiesScreenshotToClipboard() {

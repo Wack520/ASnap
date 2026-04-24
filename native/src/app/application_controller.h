@@ -57,6 +57,7 @@ public:
 
     using RequestStreamStarter = ConversationRequestController::RequestStreamStarter;
     using ImageEncoder = std::function<QByteArray(const QPixmap&)>;
+    using SelectedTextReader = std::function<QString()>;
 
     explicit ApplicationController(QObject* parent = nullptr);
     ~ApplicationController() override;
@@ -76,6 +77,9 @@ public:
     [[nodiscard]] QString lastStatusTextForTest() const { return lastStatusText_; }
     void setRequestStreamStarterForTest(RequestStreamStarter starter);
     void setImageEncoderForTest(ImageEncoder encoder) { imageEncoderForTest_ = std::move(encoder); }
+    void setSelectedTextReaderForTest(SelectedTextReader reader) {
+        selectedTextReaderForTest_ = std::move(reader);
+    }
     [[nodiscard]] bool isChatPanelVisibleForTest() const noexcept;
     void setEmptyRetryDelayOverrideForTest(int delayMs);
     [[nodiscard]] int emptyRetryDelayMsForTest(bool hasImageContext, int emptyRetryAttempt) const;
@@ -87,9 +91,11 @@ public:
     [[nodiscard]] QString lastUserMessageTextForTest() const;
     [[nodiscard]] QString lastAssistantMessageTextForTest() const;
     [[nodiscard]] QString lastAssistantReasoningForTest() const;
+    void querySelectedTextForTest();
     void confirmCaptureForTest(const capture::CaptureSelection& selection, bool sendToAi);
 
 private slots:
+    void startTextQuery();
     void startCapture();
     void startPlainCapture();
     void openSettings();
@@ -118,9 +124,11 @@ private:
     void clearOverlay();
     void cancelCurrentConversation(bool clearSession = true);
     void startCaptureWorkflow(CaptureLaunchMode mode);
+    void startTextQueryWorkflow();
     void handleConfirmedCapture(const ais::capture::CaptureSelection& selection);
     void handlePlainScreenshotCapture(const ais::capture::CaptureSelection& selection);
     void beginSessionFromSelection(const ais::capture::CaptureSelection& selection);
+    void beginSessionFromSelectedText(const QString& text);
     void fetchProviderModels();
     void runProviderTest(bool imageMode);
     void applySettingsFromDialog();
@@ -147,10 +155,12 @@ private:
     QSystemTrayIcon* trayIcon_ = nullptr;
     QMenu* trayMenu_ = nullptr;
     QAction* captureAction_ = nullptr;
+    QAction* textQueryAction_ = nullptr;
     QAction* screenshotAction_ = nullptr;
     QAction* settingsAction_ = nullptr;
     QAction* quitAction_ = nullptr;
     platform::windows::GlobalHotkeyHost* aiHotkeyHost_ = nullptr;
+    platform::windows::GlobalHotkeyHost* textQueryHotkeyHost_ = nullptr;
     platform::windows::GlobalHotkeyHost* screenshotHotkeyHost_ = nullptr;
     std::unique_ptr<platform::windows::StartupRegistry> startupRegistry_;
     ui::SettingsDialog* settingsDialog_ = nullptr;
@@ -161,6 +171,7 @@ private:
     QString lastStatusText_ = QStringLiteral("Ready");
     CaptureLaunchMode activeCaptureMode_ = CaptureLaunchMode::AiAssistant;
     ImageEncoder imageEncoderForTest_;
+    SelectedTextReader selectedTextReaderForTest_;
 };
 
 }  // namespace ais::app

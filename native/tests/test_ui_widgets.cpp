@@ -50,6 +50,7 @@ private slots:
     void settingsDialogBusyStateLocksAppearanceControls();
     void settingsDialogAllowsEditingFirstPrompt();
     void settingsDialogShortcutFieldsCapturePressedKeys();
+    void settingsDialogCurrentConfigIncludesTextQueryShortcut();
     void settingsDialogAllowsChoosingPanelAndTextColors();
     void settingsDialogAllowsChoosingPanelBorderColor();
     void settingsDialogCanRestoreAutomaticTextColor();
@@ -280,11 +281,25 @@ void UiWidgetTests::settingsDialogAllowsEditingFirstPrompt() {
 
 void UiWidgetTests::settingsDialogShortcutFieldsCapturePressedKeys() {
     SettingsDialog dialog(AppConfig{});
+    dialog.textQueryShortcutField()->setKeySequence(QKeySequence(QStringLiteral("Ctrl+Alt+A")));
     dialog.aiShortcutField()->setKeySequence(QKeySequence(QStringLiteral("Ctrl+Alt+Q")));
     dialog.screenshotShortcutField()->setKeySequence(QKeySequence(QStringLiteral("Ctrl+Alt+S")));
 
+    QCOMPARE(dialog.currentConfig().textQueryShortcut, QStringLiteral("Ctrl+Alt+A"));
     QCOMPARE(dialog.currentConfig().aiShortcut, QStringLiteral("Ctrl+Alt+Q"));
     QCOMPARE(dialog.currentConfig().screenshotShortcut, QStringLiteral("Ctrl+Alt+S"));
+}
+
+void UiWidgetTests::settingsDialogCurrentConfigIncludesTextQueryShortcut() {
+    AppConfig config;
+    config.textQueryShortcut = QStringLiteral("Ctrl+Shift+A");
+    config.aiShortcut = QStringLiteral("Ctrl+Shift+Q");
+    config.screenshotShortcut = QStringLiteral("Ctrl+Shift+S");
+
+    SettingsDialog dialog(config);
+    dialog.textQueryShortcutField()->setKeySequence(QKeySequence(QStringLiteral("Alt+T")));
+
+    QCOMPARE(dialog.currentConfig().textQueryShortcut, QStringLiteral("Alt+T"));
 }
 
 void UiWidgetTests::settingsDialogAllowsChoosingPanelAndTextColors() {
@@ -376,9 +391,11 @@ void UiWidgetTests::settingsDialogShortcutFieldsShareSingleRow() {
     dialog.show();
     QCoreApplication::processEvents();
 
+    const int textQueryY = dialog.textQueryShortcutField()->mapTo(&dialog, QPoint(0, 0)).y();
     const int aiY = dialog.aiShortcutField()->mapTo(&dialog, QPoint(0, 0)).y();
     const int screenshotY = dialog.screenshotShortcutField()->mapTo(&dialog, QPoint(0, 0)).y();
 
+    QVERIFY(qAbs(textQueryY - aiY) <= 4);
     QVERIFY(qAbs(aiY - screenshotY) <= 4);
 }
 

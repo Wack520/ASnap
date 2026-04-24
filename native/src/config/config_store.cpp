@@ -18,6 +18,7 @@ constexpr auto kBaseUrlKey = "baseUrl";
 constexpr auto kApiKeyKey = "apiKey";
 constexpr auto kModelKey = "model";
 constexpr auto kShortcutKey = "shortcut";
+constexpr auto kTextQueryShortcutKey = "textQueryShortcut";
 constexpr auto kAiShortcutKey = "aiShortcut";
 constexpr auto kScreenshotShortcutKey = "screenshotShortcut";
 constexpr auto kThemeKey = "theme";
@@ -93,6 +94,7 @@ constexpr auto kLegacyFirstPromptV2 =
 
     QJsonObject object{
         {kActiveProfileKey, toJson(config.activeProfile)},
+        {kTextQueryShortcutKey, config.textQueryShortcut},
         {kAiShortcutKey, config.aiShortcut},
         {kScreenshotShortcutKey, config.screenshotShortcut},
         {kThemeKey, config.theme},
@@ -149,6 +151,7 @@ constexpr auto kLegacyFirstPromptV2 =
 
     AppConfig config;
     config.activeProfile = profileFromJson(json.value(kActiveProfileKey).toObject(), config.activeProfile);
+    config.textQueryShortcut = json.value(kTextQueryShortcutKey).toString(config.textQueryShortcut);
     config.aiShortcut = json.value(kAiShortcutKey).toString(
         json.value(kShortcutKey).toString(config.aiShortcut));
     config.screenshotShortcut =
@@ -171,6 +174,7 @@ constexpr auto kLegacyFirstPromptV2 =
     if (isLegacyDefaultFirstPrompt(config.firstPrompt)) {
         config.firstPrompt = defaultFirstPromptText();
     }
+    normalizeShortcutAssignments(config);
     return config;
 }
 
