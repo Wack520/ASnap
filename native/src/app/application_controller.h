@@ -138,6 +138,7 @@ private:
     [[nodiscard]] QByteArray encodePng(const QPixmap& pixmap) const;
     [[nodiscard]] bool applyLaunchAtLoginPreference() const;
     [[nodiscard]] QString defaultFirstPrompt() const;
+    [[nodiscard]] QString defaultTextQueryPrompt() const;
     [[nodiscard]] QString statusForState(BusyState state) const;
     void rememberWindowSizes();
     [[nodiscard]] bool saveConfigSnapshot() const;

@@ -4,6 +4,7 @@
 #include <optional>
 #include <QRegularExpression>
 #include <QTextBlock>
+#include <QTextCursor>
 #include <QTextDocument>
 #include <QTextFragment>
 
@@ -101,11 +102,20 @@ struct TrailingOpenFence {
     return QStringLiteral("<span style=\"%1\">%2</span>").arg(style, text);
 }
 
+[[nodiscard]] QColor defaultCodeTextColor(const QString& theme) {
+    return theme == QStringLiteral("light")
+        ? QColor(QStringLiteral("#15181d"))
+        : QColor(QStringLiteral("#f7f8fa"));
+}
+
 [[nodiscard]] QString highlightedCodeHtml(const QString& code,
                                           const QString& language,
                                           const QString& theme) {
     QTextDocument document;
-    document.setPlainText(code);
+    QTextCursor cursor(&document);
+    QTextCharFormat baseFormat;
+    baseFormat.setForeground(defaultCodeTextColor(theme));
+    cursor.insertText(code, baseFormat);
     CodeSyntaxHighlighter highlighter(
         &document,
         language,

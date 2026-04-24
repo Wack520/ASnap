@@ -51,7 +51,6 @@ public:
     [[nodiscard]] QLineEdit* followUpInput() const noexcept { return followUpInput_; }
     [[nodiscard]] QPushButton* sendButton() const noexcept { return sendButton_; }
     [[nodiscard]] QLabel* statusLabel() const noexcept { return statusLabel_; }
-    [[nodiscard]] QToolButton* minimizeButton() const noexcept { return minimizeButton_; }
     [[nodiscard]] QToolButton* closeButton() const noexcept { return closeButton_; }
 
 signals:
@@ -120,7 +119,6 @@ private:
     QVector<HistoryMessageRenderCacheEntry> historyRenderCache_;
     QLabel* statusLabel_ = nullptr;
     QToolButton* reasoningToggleButton_ = nullptr;
-    QToolButton* minimizeButton_ = nullptr;
     QToolButton* closeButton_ = nullptr;
     QTextBrowser* reasoningView_ = nullptr;
     QTextBrowser* historyView_ = nullptr;

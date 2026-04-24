@@ -49,6 +49,7 @@ private slots:
     void settingsDialogBusyStateLocksAllEditableControls();
     void settingsDialogBusyStateLocksAppearanceControls();
     void settingsDialogAllowsEditingFirstPrompt();
+    void settingsDialogAllowsEditingTextQueryPrompt();
     void settingsDialogShortcutFieldsCapturePressedKeys();
     void settingsDialogCurrentConfigIncludesTextQueryShortcut();
     void settingsDialogAllowsChoosingPanelAndTextColors();
@@ -102,13 +103,13 @@ private slots:
     void statusBarUsesCompactHeight();
     void chatInputRowUsesChatLikeControls();
     void chatPanelRemovesFooterActionButtons();
-    void chatPanelShowsMinimizeButton();
-    void minimizeButtonHidesPanelWithoutEndingSession();
+    void chatPanelOmitsMinimizeButton();
     void reasoningPanelStartsCollapsedAndCanExpand();
     void reasoningPanelUsesScrollableCompactHeight();
     void assistantMarkdownRendersWithoutLiteralFenceMarkers();
     void historyCssUsesDedicatedCodeBodyContainer();
     void renderedCodeBlocksUseCleanPreMarkup();
+    void darkRenderedCodeBlocksAvoidBlackFallbackText();
     void streamingAssistantMessagesRenderMarkdownIncrementally();
     void streamingAssistantMessagesTreatOpenFenceAsTemporaryCodeBlock();
     void longStreamingRefreshReusesCachedHistoryRenders();
@@ -216,6 +217,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(!dialog.panelBorderColorButton()->isEnabled());
     QVERIFY(!dialog.panelBorderAutoButton()->isEnabled());
     QVERIFY(!dialog.firstPromptField()->isEnabled());
+    QVERIFY(!dialog.textQueryPromptField()->isEnabled());
 
     dialog.setBusy(false, QStringLiteral("Ready"));
 
@@ -231,6 +233,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(dialog.panelBorderColorButton()->isEnabled());
     QVERIFY(dialog.panelBorderAutoButton()->isEnabled());
     QVERIFY(dialog.firstPromptField()->isEnabled());
+    QVERIFY(dialog.textQueryPromptField()->isEnabled());
 }
 
 void UiWidgetTests::settingsDialogBusyStateLocksAppearanceControls() {
@@ -277,6 +280,20 @@ void UiWidgetTests::settingsDialogAllowsEditingFirstPrompt() {
 
     const AppConfig current = dialog.currentConfig();
     QCOMPARE(current.firstPrompt, QStringLiteral("请先总结，再给出建议。"));
+}
+
+void UiWidgetTests::settingsDialogAllowsEditingTextQueryPrompt() {
+    AppConfig config;
+    config.textQueryPrompt = QStringLiteral("请简洁解释这段文本");
+
+    SettingsDialog dialog(config);
+
+    QCOMPARE(dialog.textQueryPromptField()->toPlainText(), config.textQueryPrompt);
+
+    dialog.textQueryPromptField()->setPlainText(QStringLiteral("请先翻译，再解释关键点。"));
+
+    const AppConfig current = dialog.currentConfig();
+    QCOMPARE(current.textQueryPrompt, QStringLiteral("请先翻译，再解释关键点。"));
 }
 
 void UiWidgetTests::settingsDialogShortcutFieldsCapturePressedKeys() {
@@ -1343,30 +1360,10 @@ void UiWidgetTests::chatPanelRemovesFooterActionButtons() {
     QVERIFY(!foundBottomClose);
 }
 
-void UiWidgetTests::chatPanelShowsMinimizeButton() {
+void UiWidgetTests::chatPanelOmitsMinimizeButton() {
     FloatingChatPanel panel;
 
-    QVERIFY(panel.minimizeButton() != nullptr);
-    QCOMPARE(panel.minimizeButton()->text(), QStringLiteral("−"));
-}
-
-void UiWidgetTests::minimizeButtonHidesPanelWithoutEndingSession() {
-    auto session = std::make_shared<ChatSession>();
-    session->beginWithCapture(QByteArray("png-image"));
-    session->addAssistantText(QStringLiteral("Done"));
-
-    FloatingChatPanel panel;
-    panel.bindSession(session);
-    panel.show();
-    QVERIFY(QTest::qWaitForWindowExposed(&panel));
-
-    QSignalSpy dismissedSpy(&panel, &FloatingChatPanel::panelDismissed);
-
-    QTest::mouseClick(panel.minimizeButton(), Qt::LeftButton);
-    QCoreApplication::processEvents();
-
-    QVERIFY(!panel.isVisible());
-    QCOMPARE(dismissedSpy.count(), 0);
+    QVERIFY(panel.findChild<QToolButton*>(QStringLiteral("minimizeButton")) == nullptr);
 }
 
 void UiWidgetTests::reasoningPanelStartsCollapsedAndCanExpand() {
@@ -1461,6 +1458,18 @@ void UiWidgetTests::renderedCodeBlocksUseCleanPreMarkup() {
     QVERIFY(rendered.html.contains(QStringLiteral("<pre><code>")));
     QVERIFY(!rendered.html.contains(QStringLiteral("<p style="), Qt::CaseInsensitive));
     QVERIFY(!rendered.html.contains(QStringLiteral("-qt-"), Qt::CaseInsensitive));
+}
+
+void UiWidgetTests::darkRenderedCodeBlocksAvoidBlackFallbackText() {
+    int copyCounter = 0;
+    const ais::ui::RenderedMarkdown rendered = ais::ui::renderMarkdownWithCodeTools(
+        QStringLiteral("```javascript\nconst value = callApi(result);\n```"),
+        QStringLiteral("dark"),
+        &copyCounter);
+
+    QVERIFY(rendered.html.contains(QStringLiteral("#f7f8fa"), Qt::CaseInsensitive));
+    QVERIFY(!rendered.html.contains(QStringLiteral("color:#000000"), Qt::CaseInsensitive));
+    QVERIFY(!rendered.html.contains(QStringLiteral("color:black"), Qt::CaseInsensitive));
 }
 
 void UiWidgetTests::streamingAssistantMessagesRenderMarkdownIncrementally() {

@@ -65,6 +65,7 @@ public:
     [[nodiscard]] QPushButton* panelBorderColorButton() const noexcept;
     [[nodiscard]] QPushButton* panelBorderAutoButton() const noexcept;
     [[nodiscard]] QPlainTextEdit* firstPromptField() const noexcept { return firstPromptField_; }
+    [[nodiscard]] QPlainTextEdit* textQueryPromptField() const noexcept { return textQueryPromptField_; }
     [[nodiscard]] QCheckBox* launchAtLoginCheckBox() const noexcept { return launchAtLoginCheckBox_; }
     [[nodiscard]] QPushButton* testConnectionButton() const noexcept { return testConnectionButton_; }
     [[nodiscard]] QPushButton* testImageButton() const noexcept { return testImageButton_; }
@@ -104,6 +105,7 @@ private:
     QKeySequenceEdit* screenshotShortcutField_ = nullptr;
     SettingsDialogAppearanceSection* appearanceSection_ = nullptr;
     QPlainTextEdit* firstPromptField_ = nullptr;
+    QPlainTextEdit* textQueryPromptField_ = nullptr;
     QCheckBox* launchAtLoginCheckBox_ = nullptr;
     QPushButton* testConnectionButton_ = nullptr;
     QPushButton* testImageButton_ = nullptr;

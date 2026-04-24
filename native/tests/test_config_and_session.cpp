@@ -24,6 +24,7 @@ private slots:
     void configRoundTripsActiveProfile();
     void configRoundTripsCaptureMode();
     void configRoundTripsTextQueryShortcut();
+    void configRoundTripsTextQueryPrompt();
     void configMigratesLegacyAiShortcutToDedicatedTextQueryShortcut();
     void configRoundTripsCustomFirstPrompt();
     void configMigratesLegacyDefaultFirstPromptV1();
@@ -62,6 +63,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     expected.settingsDialogSize = QSize(688, 604);
     expected.settingsDialogPosition = QPoint(0, 0);
     expected.launchAtLogin = true;
+    expected.textQueryPrompt = QStringLiteral("请先解释术语，再总结重点");
 
     QVERIFY(store.save(expected));
 
@@ -84,6 +86,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     QVERIFY(loaded.settingsDialogPosition.has_value());
     QCOMPARE(*loaded.settingsDialogPosition, QPoint(0, 0));
     QCOMPARE(loaded.launchAtLogin, expected.launchAtLogin);
+    QCOMPARE(loaded.textQueryPrompt, expected.textQueryPrompt);
 }
 
 void ConfigAndSessionTests::configRoundTripsCaptureMode() {
@@ -119,6 +122,21 @@ void ConfigAndSessionTests::configRoundTripsTextQueryShortcut() {
     QCOMPARE(loaded.textQueryShortcut, expected.textQueryShortcut);
     QCOMPARE(loaded.aiShortcut, expected.aiShortcut);
     QCOMPARE(loaded.screenshotShortcut, expected.screenshotShortcut);
+}
+
+void ConfigAndSessionTests::configRoundTripsTextQueryPrompt() {
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+
+    ConfigStore store(tempDir.filePath("app-config.json"));
+
+    AppConfig expected;
+    expected.textQueryPrompt = QStringLiteral("请先逐句解释，再给结论");
+
+    QVERIFY(store.save(expected));
+
+    const AppConfig loaded = store.load();
+    QCOMPARE(loaded.textQueryPrompt, expected.textQueryPrompt);
 }
 
 void ConfigAndSessionTests::configMigratesLegacyAiShortcutToDedicatedTextQueryShortcut() {

@@ -36,6 +36,7 @@ constexpr auto kHeightKey = "height";
 constexpr auto kCaptureModeKey = "captureMode";
 constexpr auto kLaunchAtLoginKey = "launchAtLogin";
 constexpr auto kFirstPromptKey = "firstPrompt";
+constexpr auto kTextQueryPromptKey = "textQueryPrompt";
 constexpr auto kLegacyFirstPromptV1 =
     "请只分析我框选到的截图内容，忽略截图工具本身的边框、按钮、输入框等界面元素。"
     "如果截图为空白、选错区域、内容不清晰或无法判断，请明确告诉我。"
@@ -105,6 +106,7 @@ constexpr auto kLegacyFirstPromptV2 =
         {kCaptureModeKey, capture::toString(config.captureMode)},
         {kLaunchAtLoginKey, config.launchAtLogin},
         {kFirstPromptKey, config.firstPrompt},
+        {kTextQueryPromptKey, config.textQueryPrompt},
     };
 
     if (const QJsonValue chatPanelSize = sizeToJson(config.chatPanelSize); chatPanelSize.isObject()) {
@@ -174,6 +176,7 @@ constexpr auto kLegacyFirstPromptV2 =
     if (isLegacyDefaultFirstPrompt(config.firstPrompt)) {
         config.firstPrompt = defaultFirstPromptText();
     }
+    config.textQueryPrompt = json.value(kTextQueryPromptKey).toString(config.textQueryPrompt);
     normalizeShortcutAssignments(config);
     return config;
 }

@@ -215,7 +215,11 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
 
     firstPromptField_ = new QPlainTextEdit(this);
     firstPromptField_->setPlaceholderText(QStringLiteral("请输入截图后自动发送给 AI 的首轮提示词"));
-    firstPromptField_->setMinimumHeight(96);
+    firstPromptField_->setMinimumHeight(72);
+
+    textQueryPromptField_ = new QPlainTextEdit(this);
+    textQueryPromptField_->setPlaceholderText(QStringLiteral("请输入文本直查自动发送给 AI 的首轮提示词"));
+    textQueryPromptField_->setMinimumHeight(72);
 
     launchAtLoginCheckBox_ = new QCheckBox(QStringLiteral("Windows 当前用户登录后静默启动"), this);
 
@@ -323,10 +327,14 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     auto* promptLayout = new QVBoxLayout(promptCard);
     promptLayout->setContentsMargins(12, 12, 12, 12);
     promptLayout->setSpacing(8);
-    auto* promptLabel = new QLabel(QStringLiteral("首轮提示词"), promptCard);
+    auto* promptLabel = new QLabel(QStringLiteral("截图首轮提示词"), promptCard);
     promptLabel->setObjectName(QStringLiteral("sectionTitle"));
     promptLayout->addWidget(promptLabel);
     promptLayout->addWidget(firstPromptField_);
+    auto* textQueryPromptLabel = new QLabel(QStringLiteral("文本直查首轮提示词"), promptCard);
+    textQueryPromptLabel->setObjectName(QStringLiteral("sectionTitle"));
+    promptLayout->addWidget(textQueryPromptLabel);
+    promptLayout->addWidget(textQueryPromptField_);
     promptLayout->addWidget(launchAtLoginCheckBox_);
 
     auto* buttonBox = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, this);
@@ -402,6 +410,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     }
 
     firstPromptField_->setPlainText(config.firstPrompt);
+    textQueryPromptField_->setPlainText(config.textQueryPrompt);
     launchAtLoginCheckBox_->setChecked(config.launchAtLogin);
 
     setPanelColor(QColor(config.panelColor));
@@ -542,6 +551,7 @@ AppConfig SettingsDialog::currentConfig() const {
 
     config.launchAtLogin = launchAtLoginCheckBox_ != nullptr && launchAtLoginCheckBox_->isChecked();
     config.firstPrompt = firstPromptField_->toPlainText().trimmed();
+    config.textQueryPrompt = textQueryPromptField_->toPlainText().trimmed();
     return config;
 }
 
@@ -679,6 +689,7 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
              static_cast<QWidget*>(aiShortcutField_),
              static_cast<QWidget*>(screenshotShortcutField_),
              static_cast<QWidget*>(firstPromptField_),
+             static_cast<QWidget*>(textQueryPromptField_),
              static_cast<QWidget*>(launchAtLoginCheckBox_),
              static_cast<QWidget*>(fetchModelsButton_),
              static_cast<QWidget*>(testConnectionButton_),

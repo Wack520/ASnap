@@ -38,10 +38,9 @@ constexpr int kMaximumPanelWidth = 1280;
 constexpr int kPanelCornerRadius = 18;
 
 [[nodiscard]] bool isHeaderControl(const QWidget* widget,
-                                   const QToolButton* minimizeButton,
                                    const QToolButton* closeButton) {
     return widget != nullptr &&
-           (widget == minimizeButton || widget == closeButton);
+           widget == closeButton;
 }
 
 [[nodiscard]] bool isHistoryNavigationKey(const int key) {
@@ -142,12 +141,6 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     sendButton_->setCursor(Qt::PointingHandCursor);
     sendButton_->setFixedSize(26, 26);
 
-    minimizeButton_ = new QToolButton(this);
-    minimizeButton_->setObjectName(QStringLiteral("minimizeButton"));
-    minimizeButton_->setText(QStringLiteral("−"));
-    minimizeButton_->setAutoRaise(true);
-    minimizeButton_->setCursor(Qt::PointingHandCursor);
-
     closeButton_ = new QToolButton(this);
     closeButton_->setObjectName(QStringLiteral("dismissButton"));
     closeButton_->setText(QStringLiteral("×"));
@@ -162,7 +155,6 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
     auto* headerRow = new QHBoxLayout();
     headerRow->setSpacing(6);
     headerRow->addWidget(statusLabel_, 1);
-    headerRow->addWidget(minimizeButton_);
     headerRow->addWidget(closeButton_);
 
     composerShell_ = new QFrame(this);
@@ -190,7 +182,6 @@ FloatingChatPanel::FloatingChatPanel(QWidget* parent)
 
     connect(sendButton_, &QPushButton::clicked, this, &FloatingChatPanel::emitSendRequest);
     connect(followUpInput_, &QLineEdit::returnPressed, this, &FloatingChatPanel::emitSendRequest);
-    connect(minimizeButton_, &QToolButton::clicked, this, &QWidget::hide);
     connect(closeButton_, &QToolButton::clicked, this, &QWidget::close);
     connect(historyView_, &QTextBrowser::anchorClicked, this, &FloatingChatPanel::handleRichTextLink);
     connect(reasoningView_, &QTextBrowser::anchorClicked, this, &FloatingChatPanel::handleRichTextLink);
@@ -294,7 +285,7 @@ bool FloatingChatPanel::eventFilter(QObject* watched, QEvent* event) {
     case QEvent::MouseButtonRelease: {
         auto* mouseEvent = static_cast<QMouseEvent*>(event);
         const QPoint panelPos = mapFromGlobal(mouseEvent->globalPosition().toPoint());
-        if (isHeaderControl(widget, minimizeButton_, closeButton_) &&
+        if (isHeaderControl(widget, closeButton_) &&
             interactionMode_ == InteractionMode::None) {
             unsetCursor();
             break;
@@ -491,8 +482,7 @@ void FloatingChatPanel::mouseReleaseEvent(QMouseEvent* event) {
 }
 
 FloatingChatPanel::InteractionMode FloatingChatPanel::hitTestInteraction(const QPoint& pos) const {
-    if ((minimizeButton_ != nullptr && minimizeButton_->geometry().contains(pos)) ||
-        (closeButton_ != nullptr && closeButton_->geometry().contains(pos))) {
+    if (closeButton_ != nullptr && closeButton_->geometry().contains(pos)) {
         return InteractionMode::None;
     }
     if (pos.x() <= kResizeMargin) {

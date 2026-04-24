@@ -93,8 +93,14 @@ namespace {
     return error;
 }
 
-[[nodiscard]] QString selectedTextPrompt(const QString& text) {
-    return QStringLiteral("请简洁的解释这段文本：\n\n%1").arg(text);
+[[nodiscard]] QString selectedTextPrompt(QString prompt, const QString& text) {
+    prompt = prompt.trimmed();
+    while (prompt.endsWith(QChar::fromLatin1(':')) ||
+           prompt.endsWith(QChar(0xff1a))) {
+        prompt.chop(1);
+        prompt = prompt.trimmed();
+    }
+    return QStringLiteral("%1：\n\n%2").arg(prompt, text);
 }
 
 }  // namespace
@@ -752,6 +758,9 @@ void ApplicationController::applyConfigDefaults() {
     if (config_.firstPrompt.trimmed().isEmpty()) {
         config_.firstPrompt = config::defaultFirstPromptText();
     }
+    if (config_.textQueryPrompt.trimmed().isEmpty()) {
+        config_.textQueryPrompt = config::defaultTextQueryPromptText();
+    }
 }
 
 void ApplicationController::applyCaptureModeToService() {
@@ -898,7 +907,7 @@ void ApplicationController::beginSessionFromSelectedText(const QString& text) {
     chatPanel_->activateWindow();
     QApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
 
-    const QString prompt = selectedTextPrompt(text);
+    const QString prompt = selectedTextPrompt(defaultTextQueryPrompt(), text);
     QTimer::singleShot(0, this, [this, prompt]() {
         if (chatPanel_ == nullptr || !chatPanel_->isVisible() || requestController_ == nullptr) {
             return;
@@ -1071,6 +1080,15 @@ QString ApplicationController::defaultFirstPrompt() const {
     }
 
     return config::defaultFirstPromptText();
+}
+
+QString ApplicationController::defaultTextQueryPrompt() const {
+    const QString prompt = config_.textQueryPrompt.trimmed();
+    if (!prompt.isEmpty()) {
+        return prompt;
+    }
+
+    return config::defaultTextQueryPromptText();
 }
 
 QString ApplicationController::statusForState(const BusyState state) const {

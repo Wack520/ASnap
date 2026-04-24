@@ -35,6 +35,7 @@ private slots:
     void assetUploadFailureFallsBackToOpenAiCompatibleOnce();
     void reasoningOnlyAssistantResponseDoesNotRetry();
     void textQueryStartsConversationFromSelectedText();
+    void textQueryUsesConfiguredFirstPrompt();
     void textQueryFailureShowsGuidanceMessage();
     void plainCaptureCopiesScreenshotToClipboard();
 };
@@ -410,6 +411,36 @@ void ApplicationControllerTests::textQueryStartsConversationFromSelectedText() {
     QCOMPARE(requestStartCount, 1);
     QCOMPARE(controller.lastUserMessageTextForTest(),
              QStringLiteral("请简洁的解释这段文本：\n\nSELECT * FROM users WHERE id = 1"));
+}
+
+void ApplicationControllerTests::textQueryUsesConfiguredFirstPrompt() {
+    ApplicationController controller;
+    int requestStartCount = 0;
+    ais::config::AppConfig config;
+    config.textQueryPrompt = QStringLiteral("请先翻译再总结");
+
+    controller.loadConfigForTest(config);
+    controller.setSelectedTextReaderForTest([]() {
+        return QStringLiteral("console.log('hello')");
+    });
+    controller.setRequestStreamStarterForTest(
+        [&](const ais::config::ProviderProfile&,
+            const QList<ais::chat::ChatMessage>&,
+            ais::ai::AiClient::DeltaHandler,
+            ais::ai::AiClient::DeltaHandler,
+            ais::ai::AiClient::CompletionHandler,
+            ais::ai::AiClient::FailureHandler,
+            int) {
+            requestStartCount += 1;
+            return true;
+        });
+
+    controller.querySelectedTextForTest();
+    QCoreApplication::processEvents();
+
+    QCOMPARE(requestStartCount, 1);
+    QCOMPARE(controller.lastUserMessageTextForTest(),
+             QStringLiteral("请先翻译再总结：\n\nconsole.log('hello')"));
 }
 
 void ApplicationControllerTests::textQueryFailureShowsGuidanceMessage() {

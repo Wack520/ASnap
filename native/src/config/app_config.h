@@ -16,6 +16,10 @@ namespace ais::config {
     return QStringLiteral("请只分析我框选到的截图内容。");
 }
 
+[[nodiscard]] inline QString defaultTextQueryPromptText() {
+    return QStringLiteral("请简洁的解释这段文本");
+}
+
 [[nodiscard]] inline QSize defaultChatPanelSize() {
     return QSize(360, 560);
 }
@@ -52,6 +56,7 @@ struct AppConfig {
     capture::CaptureMode captureMode = capture::CaptureMode::Standard;
     bool launchAtLogin = false;
     QString firstPrompt = defaultFirstPromptText();
+    QString textQueryPrompt = defaultTextQueryPromptText();
 
     bool operator==(const AppConfig&) const = default;
 };
