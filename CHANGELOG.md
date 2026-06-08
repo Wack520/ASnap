@@ -6,6 +6,7 @@
 
 ## [0.1.9] - 2026-06-08
 
+- README 改为更简洁的项目介绍，并加入真实运行截图。
 - 发布流程改为从 `CHANGELOG.md` 生成更新说明，避免后续 Release 复用旧文案。
 - GitHub Actions 构建环境升级到 Qt 6.8.3 与 MSVC 2022，并在 CI 中同时构建/测试 Debug 与 Release。
 - 本地打包脚本与 README 构建说明同步到 Qt 6.8.3 / `msvc2022_64`。
