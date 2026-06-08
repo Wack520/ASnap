@@ -17,8 +17,6 @@ Windows 桌面 AI 截图助手：冻结屏幕、自由框选、立刻提问，�
   </a>
 </p>
 
-![ASnap 运行截图](docs/media/asnap-settings.png)
-
 ## 亮点
 
 - 全局快捷键：文本直查 / AI 截图 / 普通截图
