@@ -21,8 +21,7 @@ function Find-CMake {
         $env:CMAKE_EXE,
         "C:\Program Files\CMake\bin\cmake.exe",
         "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
-        "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe",
-        "C:\Users\21115\Qt\Tools\CMake_64\bin\cmake.exe"
+        "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe"
     ) | Where-Object { $_ -and (Test-Path $_) })
 
     if ($candidates.Count -gt 0) {
@@ -64,7 +63,6 @@ function Find-QtRoot {
         $env:QT_ROOT_DIR,
         $env:QTDIR,
         (Get-QtRootFromCache -CachePath (Join-Path $BuildDirPath "CMakeCache.txt")),
-        "C:\Users\21115\Qt\6.8.3\msvc2022_64",
         "C:\Qt\6.8.3\msvc2022_64"
     ) | Where-Object { $_ -and (Test-Path $_) })
 
