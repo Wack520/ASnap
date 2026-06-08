@@ -64,8 +64,8 @@ function Find-QtRoot {
         $env:QT_ROOT_DIR,
         $env:QTDIR,
         (Get-QtRootFromCache -CachePath (Join-Path $BuildDirPath "CMakeCache.txt")),
-        "C:\Users\21115\Qt\6.6.3\msvc2019_64",
-        "C:\Qt\6.6.3\msvc2019_64"
+        "C:\Users\21115\Qt\6.8.3\msvc2022_64",
+        "C:\Qt\6.8.3\msvc2022_64"
     ) | Where-Object { $_ -and (Test-Path $_) })
 
     if ($candidates.Count -gt 0) {
@@ -181,7 +181,7 @@ Invoke-Step "Configure ($Configuration)" {
 
 if ($RunTests.IsPresent) {
     Invoke-Step "Build all targets ($Configuration)" {
-        & $cmakeExe --build $buildDirPath --config $Configuration -- /m:1
+        & $cmakeExe --build $buildDirPath --config $Configuration --parallel
     }
 
     Invoke-Step "Run tests ($Configuration)" {
@@ -190,7 +190,7 @@ if ($RunTests.IsPresent) {
     }
 } else {
     Invoke-Step "Build app target ($Configuration)" {
-        & $cmakeExe --build $buildDirPath --config $Configuration --target ai_screenshot -- /m:1
+        & $cmakeExe --build $buildDirPath --config $Configuration --target ai_screenshot --parallel
     }
 }
 

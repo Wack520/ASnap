@@ -25,13 +25,13 @@ jobs:
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install Qt 6.6.3
+      - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.6.3
+          version: 6.8.3
           host: windows
           target: desktop
-          arch: win64_msvc2019_64
+          arch: win64_msvc2022_64
           cache: true
 
       - name: Install Inno Setup 6
@@ -83,28 +83,12 @@ jobs:
       - name: Build release notes
         if: github.ref_type == 'tag'
         shell: pwsh
-        run: |
-          $installer = Get-ChildItem dist -Filter 'ASnap-Setup-windows-x64-*.exe' | Select-Object -First 1
-          if ($null -eq $installer) { throw 'Installer EXE not found.' }
-          $shaPath = Join-Path $installer.DirectoryName ($installer.BaseName + '.sha256.txt')
-          if (-not (Test-Path $shaPath)) { throw 'Installer SHA256 file not found.' }
-          $shaLine = (Get-Content $shaPath | Select-Object -First 1).Trim()
-          $shaValue = ($shaLine -split '\s+')[0]
-          @"
-          ## 下载
-
-          - Windows 安装器：$($installer.Name)
-
-          ## 校验
-
-          - SHA256: $($shaValue)
-
-          ## 更新
-
-          - 移除聊天面板无效的最小化按钮，界面更直接
-          - 修复深色背景下代码块文字过黑的问题
-          - 文本直查现在支持单独设置首轮提示词
-          "@ | Set-Content dist/release-notes.md -Encoding utf8
+        run: >
+          .\scripts\build-release-notes.ps1
+          -Version "${{ steps.version.outputs.package_value }}"
+          -DistDir dist
+          -ChangelogPath CHANGELOG.md
+          -OutputPath dist\release-notes.md
 
       - name: Remove stale installer assets
         if: github.ref_type == 'tag'

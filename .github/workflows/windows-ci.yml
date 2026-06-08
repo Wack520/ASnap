@@ -20,14 +20,18 @@ jobs:
       - name: Setup MSVC environment
         uses: ilammy/msvc-dev-cmd@v1
 
-      - name: Install Qt 6.6.3
+      - name: Install Qt 6.8.3
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.6.3
+          version: 6.8.3
           host: windows
           target: desktop
-          arch: win64_msvc2019_64
+          arch: win64_msvc2022_64
           cache: true
+
+      - name: Test release notes script
+        shell: pwsh
+        run: .\scripts\test-build-release-notes.ps1
 
       - name: Configure
         shell: pwsh
@@ -39,10 +43,20 @@ jobs:
 
       - name: Build Debug
         shell: pwsh
-        run: cmake --build build/native --config Debug -- /m:1
+        run: cmake --build build/native --config Debug --parallel
 
       - name: Test Debug
         shell: pwsh
         run: |
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
           ctest --test-dir build/native -C Debug --output-on-failure
+
+      - name: Build Release
+        shell: pwsh
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Test Release
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          ctest --test-dir build/native -C Release --output-on-failure

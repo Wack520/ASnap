@@ -5,7 +5,7 @@ project(ai_screenshot_native VERSION 0.1.8 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Widgets Network Test)
+find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Widgets Network Test)
 
 qt_standard_project_setup()
 

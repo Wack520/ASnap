@@ -85,19 +85,19 @@ ASnap 面向 Windows 桌面场景，主打“截完继续问”。
 - Windows 10 / 11
 - Visual Studio 2022 Build Tools（MSVC）
 - CMake 3.28+
-- Qt 6.6+
+- Qt 6.8+
 
 ### 配置
 
 ```powershell
-$env:CMAKE_PREFIX_PATH='C:\Qt\6.6.3\msvc2022_64'
+$env:CMAKE_PREFIX_PATH='C:\Qt\6.8.3\msvc2022_64'
 cmake -S native -B build/native
 ```
 
 ### 构建
 
 ```powershell
-cmake --build build/native --config Debug -- /m:1
+cmake --build build/native --config Debug --parallel
 ```
 
 ### 测试
