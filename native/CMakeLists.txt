@@ -27,8 +27,16 @@ add_library(ai_screenshot_core STATIC
     src/ai/sample_image_factory.h
     src/app/application_controller.cpp
     src/app/application_controller.h
+    src/app/capture_coordinator.cpp
+    src/app/capture_coordinator.h
     src/app/capture_workflow_controller.cpp
     src/app/capture_workflow_controller.h
+    src/app/conversation_runtime.cpp
+    src/app/conversation_runtime.h
+    src/app/settings_coordinator.cpp
+    src/app/settings_coordinator.h
+    src/app/shell_integration.cpp
+    src/app/shell_integration.h
     src/capture/capture_overlay.cpp
     src/capture/capture_overlay.h
     src/capture/capture_pipeline_types.h

@@ -53,6 +53,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     expected.panelColor = QStringLiteral("#223344");
     expected.panelTextColor = QStringLiteral("#f8fafc");
     expected.panelBorderColor = QStringLiteral("#6b7280");
+    expected.captureMode = ais::capture::CaptureMode::HdrCompatible;
     expected.chatPanelSize = QSize(612, 560);
     expected.settingsDialogSize = QSize(688, 604);
     expected.launchAtLogin = true;
@@ -72,6 +73,7 @@ void ConfigAndSessionTests::configRoundTripsActiveProfile() {
     QCOMPARE(loaded.panelColor, expected.panelColor);
     QCOMPARE(loaded.panelTextColor, expected.panelTextColor);
     QCOMPARE(loaded.panelBorderColor, expected.panelBorderColor);
+    QCOMPARE(static_cast<int>(loaded.captureMode), static_cast<int>(expected.captureMode));
     QCOMPARE(loaded.chatPanelSize, expected.chatPanelSize);
     QCOMPARE(loaded.settingsDialogSize, expected.settingsDialogSize);
     QCOMPARE(loaded.launchAtLogin, expected.launchAtLogin);

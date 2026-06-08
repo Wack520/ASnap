@@ -60,14 +60,18 @@ struct NormalizedFrame {
 
     int brightSamples = 0;
     int darkSamples = 0;
-    for (int y = 0; y < linearImage.height(); y += yStep) {
+    for (int y = 0; y < linearImage.height(); ++y) {
         const auto* row = reinterpret_cast<const float*>(linearImage.constScanLine(y));
-        for (int x = 0; x < linearImage.width(); x += xStep) {
+        const bool sampleRow = (y % yStep) == 0;
+        for (int x = 0; x < linearImage.width(); ++x) {
             const float red = row[x * 4 + 0];
             const float green = row[x * 4 + 1];
             const float blue = row[x * 4 + 2];
             const float luminance = linearLuminance(red, green, blue);
             stats.peakLuminance = std::max(stats.peakLuminance, luminance);
+            if (!sampleRow || (x % xStep) != 0) {
+                continue;
+            }
             if (luminance >= 0.985f) {
                 ++brightSamples;
             }

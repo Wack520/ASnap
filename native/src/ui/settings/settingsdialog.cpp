@@ -105,6 +105,14 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     modelField_->setEditable(true);
     modelField_->setInsertPolicy(QComboBox::NoInsert);
 
+    captureModeField_ = new QComboBox(this);
+    captureModeField_->addItem(QStringLiteral("标准（WGC 优先）"),
+                               static_cast<int>(ais::capture::CaptureMode::Standard));
+    captureModeField_->addItem(QStringLiteral("HDR 兼容（优先 GDI）"),
+                               static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+    captureModeField_->setToolTip(
+        QStringLiteral("HDR 页面如果出现过曝，优先切换到 HDR 兼容模式。"));
+
     modelPopupButton_ = new QToolButton(this);
     modelPopupButton_->setObjectName(QStringLiteral("modelPopupButton"));
     modelPopupButton_->setToolButtonStyle(Qt::ToolButtonIconOnly);
@@ -169,6 +177,7 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     providerForm->addRow(QStringLiteral("Base URL"), baseUrlField_);
     providerForm->addRow(QStringLiteral("API Key"), apiKeyField_);
     providerForm->addRow(QStringLiteral("模型"), modelToolsStack);
+    providerForm->addRow(QStringLiteral("截图模式"), captureModeField_);
 
     auto* shortcutFieldsRow = new QWidget(providerCard);
     auto* shortcutFieldsLayout = new QHBoxLayout(shortcutFieldsRow);
@@ -255,6 +264,9 @@ SettingsDialog::SettingsDialog(const AppConfig& config, QWidget* parent)
     if (!config.activeProfile.model.trimmed().isEmpty()) {
         modelField_->addItem(config.activeProfile.model.trimmed());
     }
+    captureModeField_->setCurrentIndex(qMax(
+        0,
+        captureModeField_->findData(static_cast<int>(config.captureMode))));
 
     aiShortcutField_->setKeySequence(QKeySequence::fromString(config.aiShortcut, QKeySequence::PortableText));
     screenshotShortcutField_->setKeySequence(
@@ -388,6 +400,9 @@ ProviderProfile SettingsDialog::currentProfile() const {
 AppConfig SettingsDialog::currentConfig() const {
     AppConfig config = initialConfig_;
     config.activeProfile = currentProfile();
+    config.captureMode = captureModeField_ != nullptr
+        ? static_cast<ais::capture::CaptureMode>(captureModeField_->currentData().toInt())
+        : ais::capture::CaptureMode::Standard;
 
     const QString aiShortcutText = aiShortcutField_->keySequence().toString(QKeySequence::PortableText).trimmed();
     const QString screenshotShortcutText =
@@ -519,6 +534,7 @@ void SettingsDialog::setBusy(bool busy, const QString& status) {
              static_cast<QWidget*>(baseUrlField_),
              static_cast<QWidget*>(apiKeyField_),
              static_cast<QWidget*>(modelField_),
+             static_cast<QWidget*>(captureModeField_),
              static_cast<QWidget*>(modelPopupButton_),
              static_cast<QWidget*>(aiShortcutField_),
              static_cast<QWidget*>(screenshotShortcutField_),

@@ -25,6 +25,7 @@ constexpr auto kOpacityKey = "opacity";
 constexpr auto kPanelColorKey = "panelColor";
 constexpr auto kPanelTextColorKey = "panelTextColor";
 constexpr auto kPanelBorderColorKey = "panelBorderColor";
+constexpr auto kCaptureModeKey = "captureMode";
 constexpr auto kChatPanelSizeKey = "chatPanelSize";
 constexpr auto kSettingsDialogSizeKey = "settingsDialogSize";
 constexpr auto kWidthKey = "width";
@@ -86,6 +87,7 @@ constexpr auto kLegacyFirstPromptV2 =
         {kPanelColorKey, config.panelColor},
         {kPanelTextColorKey, config.panelTextColor},
         {kPanelBorderColorKey, config.panelBorderColor},
+        {kCaptureModeKey, ais::capture::toString(config.captureMode)},
         {kLaunchAtLoginKey, config.launchAtLogin},
         {kFirstPromptKey, config.firstPrompt},
     };
@@ -127,6 +129,11 @@ constexpr auto kLegacyFirstPromptV2 =
     config.panelColor = json.value(kPanelColorKey).toString(config.panelColor);
     config.panelTextColor = json.value(kPanelTextColorKey).toString(config.panelTextColor);
     config.panelBorderColor = json.value(kPanelBorderColorKey).toString(config.panelBorderColor);
+    if (const auto captureMode =
+            ais::capture::captureModeFromString(json.value(kCaptureModeKey).toString());
+        captureMode.has_value()) {
+        config.captureMode = *captureMode;
+    }
     config.chatPanelSize = sizeFromJson(json.value(kChatPanelSizeKey));
     config.settingsDialogSize = sizeFromJson(json.value(kSettingsDialogSizeKey));
     config.launchAtLogin = json.value(kLaunchAtLoginKey).toBool(config.launchAtLogin);

@@ -569,16 +569,16 @@ bool isWindowsGraphicsCaptureSupported() {
 std::optional<ais::capture::RawScreenFrame> captureDisplayWithWgc(
     const ais::capture::DisplayDescriptor& display) {
     QString failureNote;
-    if (const auto fp16Frame =
+    if (const auto bgraFrame =
             detail::captureDisplayWithWgc(display,
-                                          ais::capture::CaptureBackendKind::WgcFp16,
+                                          ais::capture::CaptureBackendKind::WgcBgra8,
                                           &failureNote);
-        fp16Frame.has_value()) {
-        return fp16Frame;
+        bgraFrame.has_value()) {
+        return bgraFrame;
     }
 
     return detail::captureDisplayWithWgc(display,
-                                         ais::capture::CaptureBackendKind::WgcBgra8,
+                                         ais::capture::CaptureBackendKind::WgcFp16,
                                          &failureNote);
 }
 

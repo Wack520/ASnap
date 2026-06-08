@@ -55,7 +55,8 @@ DesktopSnapshot DesktopCaptureService::captureVirtualDesktop() const {
 
     const QList<DisplayDescriptor> displays = topology_->enumerateDisplays();
     CaptureDiagnostics diagnostics;
-    const QList<RawScreenFrame> rawFrames = backend_->captureDisplays(displays, &diagnostics);
+    const QList<RawScreenFrame> rawFrames =
+        backend_->captureDisplays(displays, &diagnostics, captureMode_);
 
     QList<PreparedScreenFrame> preparedFrames;
     preparedFrames.reserve(rawFrames.size());

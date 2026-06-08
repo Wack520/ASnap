@@ -32,7 +32,8 @@ class WindowsScreenCaptureBackend final : public ais::capture::ScreenCaptureBack
 public:
     [[nodiscard]] QList<ais::capture::RawScreenFrame> captureDisplays(
         const QList<ais::capture::DisplayDescriptor>& displays,
-        ais::capture::CaptureDiagnostics* diagnostics) const override;
+        ais::capture::CaptureDiagnostics* diagnostics,
+        ais::capture::CaptureMode captureMode) const override;
 };
 
 }  // namespace ais::platform::windows

@@ -39,6 +39,7 @@ private slots:
     void settingsDialogBusyStateLocksAllEditableControls();
     void settingsDialogBusyStateLocksAppearanceControls();
     void settingsDialogAllowsEditingFirstPrompt();
+    void settingsDialogCanChooseCaptureMode();
     void settingsDialogShortcutFieldsCapturePressedKeys();
     void settingsDialogAllowsChoosingPanelAndTextColors();
     void settingsDialogAllowsChoosingPanelBorderColor();
@@ -139,6 +140,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(!dialog.baseUrlField()->isEnabled());
     QVERIFY(!dialog.apiKeyField()->isEnabled());
     QVERIFY(!dialog.modelField()->isEnabled());
+    QVERIFY(!dialog.captureModeField()->isEnabled());
     QVERIFY(!dialog.themeField()->isEnabled());
     QVERIFY(!dialog.opacityField()->isEnabled());
     QVERIFY(!dialog.panelColorButton()->isEnabled());
@@ -153,6 +155,7 @@ void UiWidgetTests::settingsDialogBusyStateLocksAllEditableControls() {
     QVERIFY(dialog.baseUrlField()->isEnabled());
     QVERIFY(dialog.apiKeyField()->isEnabled());
     QVERIFY(dialog.modelField()->isEnabled());
+    QVERIFY(dialog.captureModeField()->isEnabled());
     QVERIFY(dialog.themeField()->isEnabled());
     QVERIFY(dialog.opacityField()->isEnabled());
     QVERIFY(dialog.panelColorButton()->isEnabled());
@@ -207,6 +210,24 @@ void UiWidgetTests::settingsDialogAllowsEditingFirstPrompt() {
 
     const AppConfig current = dialog.currentConfig();
     QCOMPARE(current.firstPrompt, QStringLiteral("请先总结，再给出建议。"));
+}
+
+void UiWidgetTests::settingsDialogCanChooseCaptureMode() {
+    AppConfig config;
+    config.captureMode = ais::capture::CaptureMode::Standard;
+
+    SettingsDialog dialog(config);
+    QVERIFY(dialog.captureModeField() != nullptr);
+
+    const int hdrCompatibleIndex =
+        dialog.captureModeField()->findData(static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
+    QVERIFY(hdrCompatibleIndex >= 0);
+
+    dialog.captureModeField()->setCurrentIndex(hdrCompatibleIndex);
+
+    const AppConfig current = dialog.currentConfig();
+    QCOMPARE(static_cast<int>(current.captureMode),
+             static_cast<int>(ais::capture::CaptureMode::HdrCompatible));
 }
 
 void UiWidgetTests::settingsDialogShortcutFieldsCapturePressedKeys() {

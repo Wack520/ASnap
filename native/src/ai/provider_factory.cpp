@@ -65,9 +65,9 @@ struct InlineImagePayload {
         return payload;
     }
 
-    constexpr int kLargeInlineImageThresholdBytes = 2 * 1024 * 1024;
-    constexpr int kMaxPreferredDimension = 2300;
-    constexpr int kPreferredTargetBytes = 4 * 1024 * 1024;
+    constexpr int kLargeInlineImageThresholdBytes = 6 * 1024 * 1024;
+    constexpr int kMaxPreferredDimension = 4096;
+    constexpr int kPreferredTargetBytes = 8 * 1024 * 1024;
 
     QImage image = QImage::fromData(imageBytes);
     if (image.isNull()) {
@@ -92,6 +92,10 @@ struct InlineImagePayload {
     if (!scaledPngBytes.isEmpty() &&
         (dimensionsTooLarge || scaledPngBytes.size() < payload.bytes.size())) {
         payload.bytes = scaledPngBytes;
+    }
+
+    if (payload.bytes.size() <= kPreferredTargetBytes) {
+        return payload;
     }
 
     for (const int quality : {92, 86, 80, 74, 68}) {

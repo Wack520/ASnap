@@ -11,6 +11,8 @@ namespace ais::capture {
 struct ScreenMapping {
     QRect overlayRect;
     QRect virtualRect;
+    QRect captureRect;
+    qreal captureDevicePixelRatio = 1.0;
 };
 
 struct DesktopSnapshot {
@@ -18,6 +20,7 @@ struct DesktopSnapshot {
     QPixmap captureImage;
     QRect overlayGeometry;
     QRect virtualGeometry;
+    QRect captureGeometry;
     QList<ScreenMapping> screenMappings;
     CaptureDiagnostics diagnostics;
 };

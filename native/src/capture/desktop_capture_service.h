@@ -6,6 +6,7 @@
 #include <QList>
 #include <QRect>
 
+#include "capture/capture_mode.h"
 #include "capture/desktop_snapshot.h"
 #include "capture/display_topology.h"
 #include "capture/screen_capture_backend.h"
@@ -18,6 +19,8 @@ public:
     DesktopCaptureService(std::unique_ptr<DisplayTopology> topology,
                           std::unique_ptr<ScreenCaptureBackend> backend);
 
+    void setCaptureMode(CaptureMode mode) noexcept { captureMode_ = mode; }
+    [[nodiscard]] CaptureMode captureMode() const noexcept { return captureMode_; }
     [[nodiscard]] DesktopSnapshot captureVirtualDesktop() const;
     [[nodiscard]] static QRect translateToVirtual(const QRect& localRect,
                                                   const QPoint& virtualOrigin);
@@ -27,6 +30,7 @@ public:
                                                       const QRect& logicalRect);
 
 private:
+    CaptureMode captureMode_ = CaptureMode::Standard;
     std::unique_ptr<DisplayTopology> topology_;
     std::unique_ptr<ScreenCaptureBackend> backend_;
 };

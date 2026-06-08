@@ -18,6 +18,7 @@
 #include "capture/capture_selection.h"
 #include "capture/desktop_capture_service.h"
 #include "capture/desktop_snapshot.h"
+#include "capture/snapshot_composer.h"
 #include "platform/windows/hotkey_chord.h"
 #include "platform/windows/windows_capture_backend.h"
 #include "platform/windows/windows_gdi_capture_backend.h"
@@ -145,7 +146,10 @@ private slots:
     void wgcRectConversionUsesExclusiveRightBottom();
     void windowsCaptureBackendFallsBackToGdiWhenWgcFails();
     void windowsCaptureBackendCapturesEachDisplayOnceWithDiagnostics();
-    void overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage();
+    void windowsCaptureBackendHdrCompatibleModePrefersGdiBeforeWgc();
+    void overlayPaintUsesHighDpiCaptureImageWhenLogicalSizeMatches();
+    void overlayPaintFallsBackToDisplayImageWhenCaptureWouldScale();
+    void overlayUsesLogicalGeometryAndPhysicalSelectionOnSingleHighDpiScreen();
     void overlayInitialRenderKeepsFrozenImageUndimmed();
     void overlayDraggingDimsOnlyOutsideSelection();
     void overlaySelectionUsesCornerHandlesInsteadOfFullOutline();
@@ -276,10 +280,11 @@ void CaptureFlowTests::windowsCaptureBackendFallsBackToGdiWhenWgcFails() {
 
     ais::platform::windows::WindowsScreenCaptureBackend backend;
     ais::capture::CaptureDiagnostics diagnostics;
-    const QList<RawScreenFrame> frames = backend.captureDisplays({display}, &diagnostics);
+    const QList<RawScreenFrame> frames =
+        backend.captureDisplays({display}, &diagnostics, ais::capture::CaptureMode::Standard);
     const QList<QPair<QString, CaptureBackendKind>> expectedWgcRequests = {
-        {display.deviceName, CaptureBackendKind::WgcFp16},
         {display.deviceName, CaptureBackendKind::WgcBgra8},
+        {display.deviceName, CaptureBackendKind::WgcFp16},
     };
 
     QCOMPARE(harness.wgcRequests, expectedWgcRequests);
@@ -353,8 +358,9 @@ void CaptureFlowTests::windowsCaptureBackendCapturesEachDisplayOnceWithDiagnosti
 
     ais::platform::windows::WindowsScreenCaptureBackend backend;
     ais::capture::CaptureDiagnostics diagnostics;
-    const QList<RawScreenFrame> frames =
-        backend.captureDisplays({firstDisplay, secondDisplay}, &diagnostics);
+    const QList<RawScreenFrame> frames = backend.captureDisplays({firstDisplay, secondDisplay},
+                                                                 &diagnostics,
+                                                                 ais::capture::CaptureMode::Standard);
 
     QCOMPARE(frames.size(), 2);
     QCOMPARE(frames.at(0).backendKind, CaptureBackendKind::WgcBgra8);
@@ -362,13 +368,76 @@ void CaptureFlowTests::windowsCaptureBackendCapturesEachDisplayOnceWithDiagnosti
     QCOMPARE(diagnostics.entries.size(), 2);
     QCOMPARE(diagnostics.entries.at(0).deviceName, firstDisplay.deviceName);
     QCOMPARE(diagnostics.entries.at(0).backendKind, CaptureBackendKind::WgcBgra8);
+    QVERIFY(!diagnostics.entries.at(0).fellBack);
     QCOMPARE(diagnostics.entries.at(1).deviceName, secondDisplay.deviceName);
     QCOMPARE(diagnostics.entries.at(1).backendKind, CaptureBackendKind::Gdi);
     QCOMPARE(harness.plans.value(firstDisplay.deviceName).gdiCalls, 0);
     QCOMPARE(harness.plans.value(secondDisplay.deviceName).gdiCalls, 1);
 }
 
-void CaptureFlowTests::overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptureImage() {
+void CaptureFlowTests::windowsCaptureBackendHdrCompatibleModePrefersGdiBeforeWgc() {
+    const DisplayDescriptor display{
+        .deviceName = QStringLiteral("DISPLAY_HDR"),
+        .monitorRect = QRect(0, 0, 48, 32),
+        .virtualRect = QRect(0, 0, 48, 32),
+        .devicePixelRatio = 1.0,
+        .isPrimary = true,
+    };
+
+    QImage gdiImage(QSize(48, 32), QImage::Format_ARGB32_Premultiplied);
+    gdiImage.setColorSpace(QColorSpace(QColorSpace::SRgb));
+    gdiImage.fill(Qt::yellow);
+
+    QImage wgcImage(QSize(48, 32), QImage::Format_ARGB32_Premultiplied);
+    wgcImage.setColorSpace(QColorSpace(QColorSpace::SRgb));
+    wgcImage.fill(Qt::red);
+
+    WindowsCaptureBackendHarness harness;
+    harness.plans.insert(display.deviceName,
+                         BackendPlan{
+                             .wgcFp16 =
+                                 RawScreenFrame{
+                                     .display = display,
+                                     .image = wgcImage,
+                                     .backendKind = CaptureBackendKind::WgcFp16,
+                                     .colorSpace = wgcImage.colorSpace(),
+                                     .isHdrLike = true,
+                                 },
+                             .wgcBgra =
+                                 RawScreenFrame{
+                                     .display = display,
+                                     .image = wgcImage,
+                                     .backendKind = CaptureBackendKind::WgcBgra8,
+                                     .colorSpace = wgcImage.colorSpace(),
+                                     .isHdrLike = false,
+                                 },
+                             .gdi =
+                                 RawScreenFrame{
+                                     .display = display,
+                                     .image = gdiImage,
+                                     .backendKind = CaptureBackendKind::Gdi,
+                                     .colorSpace = gdiImage.colorSpace(),
+                                     .isHdrLike = false,
+                                 },
+                         });
+    WindowsCaptureBackendHarness::ScopedInstall install(&harness);
+
+    ais::platform::windows::WindowsScreenCaptureBackend backend;
+    ais::capture::CaptureDiagnostics diagnostics;
+    const QList<RawScreenFrame> frames =
+        backend.captureDisplays({display},
+                                &diagnostics,
+                                ais::capture::CaptureMode::HdrCompatible);
+
+    QCOMPARE(frames.size(), 1);
+    QCOMPARE(frames.constFirst().backendKind, CaptureBackendKind::Gdi);
+    QCOMPARE(harness.plans.value(display.deviceName).gdiCalls, 1);
+    QVERIFY(harness.wgcRequests.isEmpty());
+    QCOMPARE(diagnostics.entries.size(), 1);
+    QCOMPARE(diagnostics.entries.constFirst().backendKind, CaptureBackendKind::Gdi);
+}
+
+void CaptureFlowTests::overlayPaintUsesHighDpiCaptureImageWhenLogicalSizeMatches() {
     QPixmap displayImage(QSize(200, 120));
     displayImage.fill(Qt::blue);
     displayImage.setDevicePixelRatio(2.0);
@@ -380,28 +449,117 @@ void CaptureFlowTests::overlayPaintUsesLogicalDisplayImageInsteadOfHighDpiCaptur
     CaptureOverlay overlay(DesktopSnapshot{
         .displayImage = displayImage,
         .captureImage = captureImage,
-        .overlayGeometry = QRect(0, 0, displayImage.width(), displayImage.height()),
-        .virtualGeometry = QRect(0, 0, displayImage.width(), displayImage.height()),
+        .overlayGeometry = QRect(0, 0, 100, 60),
+        .virtualGeometry = QRect(0, 0, 100, 60),
+        .captureGeometry = QRect(0, 0, 200, 120),
         .screenMappings = {ais::capture::ScreenMapping{
-            .overlayRect = QRect(0, 0, displayImage.width(), displayImage.height()),
-            .virtualRect = QRect(0, 0, displayImage.width(), displayImage.height()),
+            .overlayRect = QRect(0, 0, 100, 60),
+            .virtualRect = QRect(0, 0, 100, 60),
+            .captureRect = QRect(0, 0, 200, 120),
+            .captureDevicePixelRatio = 2.0,
         }},
     });
 
     overlay.show();
     QVERIFY(overlay.isVisible());
+    QCOMPARE(overlay.size(), QSize(100, 60));
 
-    QImage rendered(displayImage.size(), QImage::Format_ARGB32_Premultiplied);
+    QImage rendered(QSize(100, 60), QImage::Format_ARGB32_Premultiplied);
+    rendered.fill(Qt::transparent);
+    overlay.render(&rendered);
+
+    const QColor center = rendered.pixelColor(50, 30);
+    QVERIFY2(center.red() > center.blue(),
+             qPrintable(QStringLiteral("expected sharp capture image tint, got rgba(%1,%2,%3,%4)")
+                            .arg(center.red())
+                            .arg(center.green())
+                            .arg(center.blue())
+                            .arg(center.alpha())));
+}
+
+void CaptureFlowTests::overlayPaintFallsBackToDisplayImageWhenCaptureWouldScale() {
+    QPixmap displayImage(QSize(100, 60));
+    displayImage.fill(Qt::blue);
+
+    QPixmap captureImage(QSize(200, 120));
+    captureImage.fill(Qt::red);
+    captureImage.setDevicePixelRatio(1.0);
+
+    CaptureOverlay overlay(DesktopSnapshot{
+        .displayImage = displayImage,
+        .captureImage = captureImage,
+        .overlayGeometry = QRect(0, 0, 100, 60),
+        .virtualGeometry = QRect(0, 0, 100, 60),
+        .captureGeometry = QRect(0, 0, 200, 120),
+        .screenMappings = {ais::capture::ScreenMapping{
+            .overlayRect = QRect(0, 0, 100, 60),
+            .virtualRect = QRect(0, 0, 100, 60),
+            .captureRect = QRect(0, 0, 200, 120),
+            .captureDevicePixelRatio = 1.0,
+        }},
+    });
+
+    overlay.show();
+    QVERIFY(overlay.isVisible());
+    QCOMPARE(overlay.size(), QSize(100, 60));
+
+    QImage rendered(QSize(100, 60), QImage::Format_ARGB32_Premultiplied);
     rendered.fill(Qt::transparent);
     overlay.render(&rendered);
 
     const QColor center = rendered.pixelColor(50, 30);
     QVERIFY2(center.blue() > center.red(),
-             qPrintable(QStringLiteral("expected display image tint, got rgba(%1,%2,%3,%4)")
+             qPrintable(QStringLiteral("expected logical display image fallback, got rgba(%1,%2,%3,%4)")
                             .arg(center.red())
                             .arg(center.green())
                             .arg(center.blue())
                             .arg(center.alpha())));
+}
+
+void CaptureFlowTests::overlayUsesLogicalGeometryAndPhysicalSelectionOnSingleHighDpiScreen() {
+    QImage image(QSize(300, 180), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::darkCyan);
+
+    const DesktopSnapshot snapshot = ais::capture::SnapshotComposer::composeFrames({
+        ais::capture::PreparedScreenFrame{
+            .display = DisplayDescriptor{
+                .deviceName = QStringLiteral("DISPLAY1"),
+                .monitorRect = QRect(0, 0, 300, 180),
+                .virtualRect = QRect(0, 0, 200, 120),
+                .devicePixelRatio = 1.5,
+                .isPrimary = true,
+            },
+            .normalizedImage = image,
+            .backendKind = CaptureBackendKind::WgcFp16,
+            .hdrToneMapped = true,
+        },
+    });
+    const DesktopSnapshot perScreenSnapshot =
+        ais::capture::SnapshotComposer::snapshotForScreen(snapshot, snapshot.screenMappings.constFirst());
+
+    CaptureOverlay overlay(perScreenSnapshot);
+    QSignalSpy confirmedSpy(&overlay, &CaptureOverlay::captureConfirmed);
+    QSignalSpy cancelledSpy(&overlay, &CaptureOverlay::captureCancelled);
+
+    overlay.show();
+    QVERIFY(overlay.isVisible());
+    QCOMPARE(overlay.size(), QSize(200, 120));
+
+    const QPoint dragStart(20, 15);
+    const QPoint dragEnd(60, 45);
+    QTest::mousePress(&overlay, Qt::LeftButton, Qt::NoModifier, dragStart);
+    QTest::mouseMove(&overlay, dragEnd, 1);
+    QTest::mouseRelease(&overlay, Qt::LeftButton, Qt::NoModifier, dragEnd);
+
+    QTRY_COMPARE(confirmedSpy.count(), 1);
+    QCOMPARE(cancelledSpy.count(), 0);
+
+    const CaptureSelection selection = confirmedSpy.takeFirst().constFirst().value<CaptureSelection>();
+    QCOMPARE(selection.localRect, QRect(dragStart, dragEnd).normalized());
+    QCOMPARE(selection.image.deviceIndependentSize().toSize(), QSize(41, 31));
+    QCOMPARE(selection.image.devicePixelRatio(), 1.5);
+    QCOMPARE(selection.image.width(), qRound(41 * 1.5));
+    QCOMPARE(selection.image.height(), qRound(31 * 1.5));
 }
 
 void CaptureFlowTests::overlayInitialRenderKeepsFrozenImageUndimmed() {

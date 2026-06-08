@@ -3,6 +3,7 @@
 #include <QString>
 #include <QSize>
 
+#include "capture/capture_mode.h"
 #include "config/provider_profile.h"
 
 namespace ais::config {
@@ -20,6 +21,7 @@ struct AppConfig {
     QString panelColor = QStringLiteral("#101214");
     QString panelTextColor;
     QString panelBorderColor;
+    capture::CaptureMode captureMode = capture::CaptureMode::Standard;
     QSize chatPanelSize;
     QSize settingsDialogSize;
     bool launchAtLogin = false;

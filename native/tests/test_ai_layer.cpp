@@ -143,7 +143,8 @@ private slots:
     void responsesBuildsInputImagePayload();
     void responsesImageRequestForGrokProxyDisablesStore();
     void responsesImageRequestForGrokProxyUsesHighDetail();
-    void responsesLargeGrokImagePayloadPrefersJpegDataUri();
+    void responsesTypicalGrokScreenshotPayloadPreservesPngDataUri();
+    void responsesHugeGrokImagePayloadStillOptimizesDataUri();
     void geminiBuildsGenerateContentRequest();
     void claudeBuildsBase64ImagePayload();
     void sendConversationLocksUntilCallbackReturns();
@@ -348,7 +349,7 @@ void AiLayerTests::responsesImageRequestForGrokProxyUsesHighDetail() {
              QStringLiteral("high"));
 }
 
-void AiLayerTests::responsesLargeGrokImagePayloadPrefersJpegDataUri() {
+void AiLayerTests::responsesTypicalGrokScreenshotPayloadPreservesPngDataUri() {
     ChatSession session;
     const QByteArray largePng = noisyPngBytes(QSize(2600, 2200));
     session.beginWithCapture(largePng);
@@ -371,6 +372,33 @@ void AiLayerTests::responsesLargeGrokImagePayloadPrefersJpegDataUri() {
     const QString imageUrl = content.at(0).toObject().value(QStringLiteral("image_url")).toString();
     const QString originalDataUri = QStringLiteral("data:image/png;base64,%1")
         .arg(QString::fromLatin1(largePng.toBase64()));
+
+    QCOMPARE(imageUrl, originalDataUri);
+}
+
+void AiLayerTests::responsesHugeGrokImagePayloadStillOptimizesDataUri() {
+    ChatSession session;
+    const QByteArray hugePng = noisyPngBytes(QSize(5200, 4200));
+    session.beginWithCapture(hugePng);
+    session.addUserText(QStringLiteral("Describe it"));
+
+    const ProviderProfile profile = makeProfile(
+        ProviderProtocol::OpenAiResponses,
+        QStringLiteral("https://520.wcgit.com/v1"),
+        QStringLiteral("responses-key"),
+        QStringLiteral("grok-4.20-0309"));
+
+    const auto provider = makeProvider(profile.protocol);
+    QVERIFY(provider != nullptr);
+
+    const RequestSpec spec = provider->buildRequest(profile, session.messages());
+    const QJsonDocument document = parseJson(spec.body);
+    QVERIFY(document.isObject());
+    const QJsonArray input = document.object().value(QStringLiteral("input")).toArray();
+    const QJsonArray content = input.at(0).toObject().value(QStringLiteral("content")).toArray();
+    const QString imageUrl = content.at(0).toObject().value(QStringLiteral("image_url")).toString();
+    const QString originalDataUri = QStringLiteral("data:image/png;base64,%1")
+        .arg(QString::fromLatin1(hugePng.toBase64()));
 
     QVERIFY(imageUrl.startsWith(QStringLiteral("data:image/")));
     QVERIFY(imageUrl != originalDataUri);

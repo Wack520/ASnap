@@ -2,6 +2,7 @@
 
 #include <QList>
 
+#include "capture/capture_mode.h"
 #include "capture/capture_pipeline_types.h"
 
 namespace ais::capture {
@@ -12,7 +13,8 @@ public:
 
     [[nodiscard]] virtual QList<RawScreenFrame> captureDisplays(
         const QList<DisplayDescriptor>& displays,
-        CaptureDiagnostics* diagnostics) const = 0;
+        CaptureDiagnostics* diagnostics,
+        CaptureMode captureMode) const = 0;
 };
 
 }  // namespace ais::capture

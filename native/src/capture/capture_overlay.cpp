@@ -20,6 +20,31 @@ const QColor kSelectionFill(0, 0, 0, 0);
 const QColor kSelectionOutline(255, 255, 255, 180);
 const QColor kShadeColor(0, 0, 0, 96);
 
+[[nodiscard]] bool previewPixmapMatchesOverlay(const QPixmap& pixmap,
+                                               const QSize& overlaySize) {
+    if (pixmap.isNull() || !overlaySize.isValid() || overlaySize.isEmpty()) {
+        return false;
+    }
+
+    const QSize logicalSize = pixmap.deviceIndependentSize().toSize();
+    return qAbs(logicalSize.width() - overlaySize.width()) <= 1 &&
+           qAbs(logicalSize.height() - overlaySize.height()) <= 1;
+}
+
+[[nodiscard]] const QPixmap* previewPixmapFor(const DesktopSnapshot& snapshot,
+                                              const QSize& overlaySize) {
+    if (previewPixmapMatchesOverlay(snapshot.captureImage, overlaySize)) {
+        return &snapshot.captureImage;
+    }
+    if (!snapshot.displayImage.isNull()) {
+        return &snapshot.displayImage;
+    }
+    if (!snapshot.captureImage.isNull()) {
+        return &snapshot.captureImage;
+    }
+    return nullptr;
+}
+
 void shadeOutsideSelection(QPainter* painter, const QRect& bounds, const QRect& selection) {
     if (painter == nullptr || !selection.isValid() || selection.isEmpty()) {
         return;
@@ -97,7 +122,11 @@ CaptureOverlay::CaptureOverlay(DesktopSnapshot snapshot, QWidget* parent)
 
 void CaptureOverlay::paintEvent(QPaintEvent*) {
     QPainter painter(this);
-    painter.drawPixmap(QPoint(0, 0), snapshot_.displayImage);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    if (const QPixmap* previewPixmap = previewPixmapFor(snapshot_, size());
+        previewPixmap != nullptr) {
+        painter.drawPixmap(QPoint(0, 0), *previewPixmap);
+    }
 
     const QRect selection = currentLocalSelection();
     if (!selection.isValid() || selection.isEmpty()) {

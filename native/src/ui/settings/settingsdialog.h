@@ -51,6 +51,7 @@ public:
     [[nodiscard]] QLineEdit* baseUrlField() const noexcept { return baseUrlField_; }
     [[nodiscard]] QLineEdit* apiKeyField() const noexcept { return apiKeyField_; }
     [[nodiscard]] QComboBox* modelField() const noexcept { return modelField_; }
+    [[nodiscard]] QComboBox* captureModeField() const noexcept { return captureModeField_; }
     [[nodiscard]] QToolButton* modelPopupButton() const noexcept { return modelPopupButton_; }
     [[nodiscard]] QPushButton* fetchModelsButton() const noexcept { return fetchModelsButton_; }
     [[nodiscard]] QKeySequenceEdit* aiShortcutField() const noexcept { return aiShortcutField_; }
@@ -94,6 +95,7 @@ private:
     QLineEdit* baseUrlField_ = nullptr;
     QLineEdit* apiKeyField_ = nullptr;
     QComboBox* modelField_ = nullptr;
+    QComboBox* captureModeField_ = nullptr;
     QToolButton* modelPopupButton_ = nullptr;
     QPushButton* fetchModelsButton_ = nullptr;
     QLabel* modelActionStatusLabel_ = nullptr;
